@@ -1,0 +1,33 @@
+# Lint policy for the Social Emperors preservation server.
+#
+# Ruff is not a project dependency, but keeping the rule set here makes
+# `ruff check .` reproducible for anyone working on the repository. The set below
+# is a ratchet: it is clean on the current tree, so any new violation fails.
+
+[lint]
+select = [
+  "E4",   # import style
+  "E7",   # statement-level mistakes
+  "E9",   # runtime errors (syntax, etc.)
+  "F",    # pyflakes: undefined names, unused imports and variables
+  "I",    # import sorting
+  "SIM",  # simplifications
+  "RUF",  # ruff-specific (unused noqa, etc.)
+  "B",    # bugbear
+  "C4",   # comprehensions
+]
+
+[lint.per-file-ignores]
+# server.py prints human-readable boot progress between its imports on purpose:
+# flask alone takes ~400 ms to import, so the user sees what is happening instead
+# of a frozen console. Moving the imports to the top would remove that feedback.
+"server.py" = ["E402"]
+
+# command.py decodes the client's command arguments positionally in one dispatch
+# chain written against a reverse-engineered protocol. Several decoded fields are
+# unused because the command behind them is unfinished; those assignments are the
+# only record of the argument positions and of what the client sends. The
+# unfinished commands are listed as feature gaps in
+# odd/tasks/lower-resource-use-and-refactor.md, so the assignments stay and F841
+# is ignored for this file only.
+"command.py" = ["F841"]
