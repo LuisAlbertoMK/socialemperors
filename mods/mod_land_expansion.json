@@ -1,0 +1,48 @@
+[
+	{
+		"op": "replace",
+		"path": "/expansion_prices",
+		"value": [
+			{
+				"coins": 4000,
+				"cash": 20,
+				"neighbors": 1
+			},
+			{
+				"coins": 40000,
+				"cash": 25,
+				"neighbors": 1
+			},
+			{
+				"coins": 80000,
+				"cash": 30,
+				"neighbors": 1
+			},
+			{
+				"coins": 100000,
+				"cash": 35,
+				"neighbors": 1
+			},
+			{
+				"coins": 150000,
+				"cash": 40,
+				"neighbors": 1
+			},
+			{
+				"coins": 300000,
+				"cash": 45,
+				"neighbors": 1
+			},
+			{
+				"coins": 400000,
+				"cash": 50,
+				"neighbors": 1
+			},
+			{
+				"coins": 500000,
+				"cash": 60,
+				"neighbors": 1
+			}
+		]
+	}
+]

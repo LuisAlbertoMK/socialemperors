@@ -1,0 +1,26 @@
+[
+	{
+		"op": "replace",
+		"path": "/social_items",
+		"value": [
+			{
+				"id": 234,
+				"worker_cost": 3,
+				"workers": "Ally I, Ally II, Ally III, Ally IV, Ally V, Ally VI, Ally VII, Ally VIII, Ally IX",
+				"description": ""
+			},
+			{
+				"id": 266,
+				"worker_cost": 2,
+				"workers": "+125,+125,+125,+125,+125,+125,+125,+125",
+				"description": ""
+			},
+			{
+				"id": 352,
+				"worker_cost": 2,
+				"workers": "+125,+125,+125,+125,+125,+125,+125,+125",
+				"description": ""
+			}
+		]
+	}
+]
