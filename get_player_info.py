@@ -1,6 +1,8 @@
-from sessions import session, neighbor_session, neighbors
 from engine import timestamp_now
+from sessions import neighbor_session, neighbors, session, synchronized
 
+
+@synchronized
 def get_player_info(USERID):
     # Update last logged in
     ts_now = timestamp_now()
@@ -17,6 +19,7 @@ def get_player_info(USERID):
     }
     return player_info
 
+@synchronized
 def get_neighbor_info(userid, map_number):
     neighbor_info = {
         "result": "ok",

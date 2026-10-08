@@ -8,7 +8,7 @@ version_code = "0.04a"
 def migrate_loaded_save(save: dict) -> bool:
 
     # discard current version saves
-    if save["version"] == version_code:
+    if save.get("version") == version_code:
         return False
     
     # fix 0.01a saves
@@ -39,7 +39,7 @@ def migrate_loaded_save(save: dict) -> bool:
     
     # 0.03a -> 0.04a
     if save["version"] == "0.03a":
-        if "pic" not in save["playerInfo"].keys():
+        if "pic" not in save["playerInfo"]:
             save["playerInfo"]["pic"] = ""
         if("survivalVidaTimeStamp" not in save["privateState"]):
             save["privateState"]["survivalVidaTimeStamp"] = []

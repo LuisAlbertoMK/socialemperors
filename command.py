@@ -1,9 +1,20 @@
 import json
+import traceback
 
-from sessions import session, save_session
-from get_game_config import get_game_config, get_level_from_xp, get_name_from_item_id, get_attribute_from_mission_id, get_xp_from_level, get_attribute_from_item_id, get_item_from_subcat_functional
 from constants import Constant
-from engine import apply_cost, apply_collect, apply_collect_xp, timestamp_now
+from engine import apply_collect, apply_collect_xp, apply_cost, timestamp_now
+from get_game_config import (
+    get_attribute_from_item_id,
+    get_attribute_from_mission_id,
+    get_game_config,
+    get_item_from_subcat_functional,
+    get_level_from_xp,
+    get_name_from_item_id,
+    get_xp_from_level,
+)
+from logger import log
+from sessions import save_session, session, synchronized
+
 
 def get_strategy_type(id):
     if id == 8:
@@ -16,6 +27,7 @@ def get_strategy_type(id):
         return "Aggressive"
     return "Unknown Strategy"
 
+@synchronized
 def command(USERID, data):
     timestamp = data["ts"]
     first_number = data["first_number"]
@@ -23,19 +35,27 @@ def command(USERID, data):
     tries = data["tries"]
     publishActions = data["publishActions"]
     commands = data["commands"]
-    
-    for i, comm in enumerate(commands):
-        cmd = comm["cmd"]
-        args = comm["args"]
-        do_command(USERID, cmd, args)
+
+    for position, comm in enumerate(commands):
+        try:
+            cmd = comm["cmd"]
+            args = comm["args"]
+            do_command(USERID, cmd, args)
+        except (IndexError, KeyError, TypeError, ValueError) as error:
+            # A command with the wrong argument shape must not abort the whole
+            # frame: the client already applied the rest of it locally, so a
+            # failed request desyncs it further. Contain it, log it, continue.
+            # Rare enough to print even with request logging off.
+            print(f"[WARN] command #{position} {comm!r} rejected: {error!r}")
+            log(traceback.format_exc())
     save_session(USERID) # Save session
 
 def do_command(USERID, cmd, args):
     save = session(USERID)
-    print (" [+] COMMAND: ", cmd, "(", args, ") -> ", sep='', end='')
+    log (" [+] COMMAND: ", cmd, "(", args, ") -> ", sep='', end='')
 
     if cmd == Constant.CMD_GAME_STATUS:
-        print(" ".join(args))
+        log(" ".join(args))
 
     elif cmd == Constant.CMD_BUY:
         id = args[0]
@@ -46,7 +66,7 @@ def do_command(USERID, cmd, args):
         bool_dont_modify_resources = bool(args[5]) # 1 if the game "buys" for you, so does not substract whatever the item cost is.
         price_multiplier = args[6]
         type = args[7]
-        print("Add", str(get_name_from_item_id(id)), "at", f"({x},{y})")
+        log("Add", str(get_name_from_item_id(id)), "at", f"({x},{y})")
         collected_at_timestamp = timestamp_now()
         level = 0 # TODO 
         orientation = 0
@@ -59,9 +79,9 @@ def do_command(USERID, cmd, args):
     
     elif cmd == Constant.CMD_COMPLETE_TUTORIAL:
         tutorial_step = args[0]
-        print("Tutorial step", tutorial_step, "reached.")
+        log("Tutorial step", tutorial_step, "reached.")
         if tutorial_step >= 31: # 31 is Dragon choosing. After that, you have some freedom. There's at least until step 45.
-            print("Tutorial COMPLETED!")
+            log("Tutorial COMPLETED!")
             save["playerInfo"]["completed_tutorial"] = 1
             save["privateState"]["dragonNestActive"] = 1 
     
@@ -74,7 +94,7 @@ def do_command(USERID, cmd, args):
         frame = args[5]
         town_id = args[6]
         reason = args[7] # "Unitat", "moveTo", "colisio", "MouseUsed"
-        print("Move", str(get_name_from_item_id(id)), "from", f"({ix},{iy})", "to", f"({newx},{newy})")
+        log("Move", str(get_name_from_item_id(id)), "from", f"({ix},{iy})", "to", f"({newx},{newy})")
         map = save["maps"][town_id]
         for item in map["items"]:
             if item[0] == id and item[1] == ix and item[2] == iy:
@@ -90,7 +110,7 @@ def do_command(USERID, cmd, args):
         num_units_contained_when_harvested = args[4]#TODO does this affect multiplier?
         resource_multiplier = args[5]
         cash_to_substract = args[6]
-        print("Collect", str(get_name_from_item_id(id)))
+        log("Collect", str(get_name_from_item_id(id)))
         map = save["maps"][town_id]
         apply_collect(save["playerInfo"], map, id, resource_multiplier)
         save["playerInfo"]["cash"] = max(save["playerInfo"]["cash"] - cash_to_substract, 0)
@@ -102,11 +122,11 @@ def do_command(USERID, cmd, args):
         town_id = args[3]
         bool_dont_modify_resources = args[4]
         reason = args[5]
-        print("Remove", str(get_name_from_item_id(id)), "from", f"({x},{y}). Reason: {reason}")
+        log("Remove", str(get_name_from_item_id(id)), "from", f"({x},{y}). Reason: {reason}")
         map = save["maps"][town_id]
-        for item in map["items"]:
+        for idx, item in enumerate(map["items"]):
             if item[0] == id and item[1] == x and item[2] == y:
-                map["items"].remove(item)
+                del map["items"][idx]
                 break
         if not bool_dont_modify_resources:
             price_multiplier = -0.05
@@ -121,18 +141,18 @@ def do_command(USERID, cmd, args):
         id = args[2]
         town_id = args[3]
         type = args[4]
-        print("Kill", str(get_name_from_item_id(id)), "from", f"({x},{y}).")
+        log("Kill", str(get_name_from_item_id(id)), "from", f"({x},{y}).")
         map = save["maps"][town_id]
-        for item in map["items"]:
+        for idx, item in enumerate(map["items"]):
             if item[0] == id and item[1] == x and item[2] == y:
                 apply_collect_xp(map, id)
-                map["items"].remove(item)
+                del map["items"][idx]
                 break
     
     elif cmd == Constant.CMD_COMPLETE_MISSION:
         mission_id = args[0]
         skipped_with_cash = bool(args[1])
-        print("Complete mission", mission_id, ":", str(get_attribute_from_mission_id(mission_id, "title")))
+        log("Complete mission", mission_id, ":", str(get_attribute_from_mission_id(mission_id, "title")))
         if skipped_with_cash:
             cash_to_substract = 0 # TODO 
             save["playerInfo"]["cash"] = max(save["playerInfo"]["cash"] - cash_to_substract, 0)
@@ -141,7 +161,7 @@ def do_command(USERID, cmd, args):
     elif cmd == Constant.CMD_REWARD_MISSION:
         town_id = args[0]
         mission_id = args[1]
-        print("Reward mission", mission_id, ":", str(get_attribute_from_mission_id(mission_id, "title")))
+        log("Reward mission", mission_id, ":", str(get_attribute_from_mission_id(mission_id, "title")))
         reward = int(get_attribute_from_mission_id(mission_id, "reward")) # gold
         save["maps"][town_id]["coins"] += reward   
         save["privateState"]["rewardedMissions"] += [mission_id]
@@ -153,7 +173,7 @@ def do_command(USERID, cmd, args):
         b_x = args[3]
         b_y = args[4]
         town_id = args[5]
-        print("Push", str(get_name_from_item_id(unit_id)), "to", f"({b_x},{b_y}).")
+        log("Push", str(get_name_from_item_id(unit_id)), "to", f"({b_x},{b_y}).")
         map = save["maps"][town_id]
         # Unit into building
         for item in map["items"]:
@@ -163,9 +183,9 @@ def do_command(USERID, cmd, args):
                 item[6] += [unit_id]
                 break
         # Remove unit
-        for item in map["items"]:
+        for idx, item in enumerate(map["items"]):
             if item[0] == unit_id and item[1] == unit_x and item[2] == unit_y:
-                map["items"].remove(item)
+                del map["items"][idx]
                 break
     
     elif cmd == Constant.CMD_POP_UNIT:
@@ -178,7 +198,7 @@ def do_command(USERID, cmd, args):
             unit_x = args[4]
             unit_y = args[5]
             unit_frame = args[6] # unknown use
-        print("Pop", str(get_name_from_item_id(unit_id)), "from", f"({b_x},{b_y}).")
+        log("Pop", str(get_name_from_item_id(unit_id)), "from", f"({b_x},{b_y}).")
         map = save["maps"][town_id]
         # Remove unit from building
         for item in map["items"]:
@@ -196,7 +216,7 @@ def do_command(USERID, cmd, args):
     
     elif cmd == Constant.CMD_RT_LEVEL_UP:
         new_level = args[0]
-        print("Level Up!:", new_level)
+        log("Level Up!:", new_level)
         map = save["maps"][0] # TODO : xp must be general, since theres no given town_id
         map["level"] = args[0]
         current_xp = map["xp"]
@@ -205,7 +225,7 @@ def do_command(USERID, cmd, args):
 
     elif cmd == Constant.CMD_RT_PUBLISH_SCORE:
         new_xp = args[0]
-        print("xp set to", new_xp)
+        log("xp set to", new_xp)
         map = save["maps"][0] # TODO : xp must be general, since theres no given town_id
         map["xp"] = new_xp
         map["level"] = get_level_from_xp(new_xp)
@@ -214,7 +234,7 @@ def do_command(USERID, cmd, args):
         land_id = args[0]
         resource = args[1]
         town_id = int(args[2])
-        print("Expansion", land_id, "purchased")
+        log("Expansion", land_id, "purchased")
         map = save["maps"][town_id]
         if land_id in map["expansions"]:
             return
@@ -233,12 +253,12 @@ def do_command(USERID, cmd, args):
     elif cmd == Constant.CMD_NAME_MAP:
         town_id =int(args[0])
         new_name = args[1]
-        print(f"Map name changed to '{new_name}'.")
+        log(f"Map name changed to '{new_name}'.")
         save["playerInfo"]["map_names"][town_id] = new_name
 
     elif cmd == Constant.CMD_EXCHANGE_CASH:
         town_id = args[0]
-        print("Exchange cash -> coins.")
+        log("Exchange cash -> coins.")
         save["playerInfo"]["cash"] = max(save["playerInfo"]["cash"] - 5, 0)#maybe make function for editing resources
         save["maps"][town_id]["coins"] += 2500
 
@@ -247,16 +267,15 @@ def do_command(USERID, cmd, args):
         y = args[1]
         town_id = int(args[2])
         item_id = args[3]
-        print("Store", str(get_name_from_item_id(item_id)), "from", f"({x},{y})")
+        log("Store", str(get_name_from_item_id(item_id)), "from", f"({x},{y})")
         map = save["maps"][town_id]
-        for item in map["items"]:
+        for idx, item in enumerate(map["items"]):
             if item[0] == item_id and item[1] == x and item[2] == y:
-                map["items"].remove(item)
+                del map["items"][idx]
                 break
         length = len(save["privateState"]["gifts"])
         if length <= item_id:
-            for i in range(item_id - length + 1):
-                save["privateState"]["gifts"].append(0)
+            save["privateState"]["gifts"].extend([0] * (item_id - length + 1))
         save["privateState"]["gifts"][item_id] += 1
 
     elif cmd == Constant.CMD_PLACE_GIFT:
@@ -265,7 +284,7 @@ def do_command(USERID, cmd, args):
         y = args[2]
         town_id = args[3]#unsure, both 3 and 4 seem to stay 0
         args[4]#unknown yet
-        print("Add", str(get_name_from_item_id(item_id)), "at", f"({x},{y})")
+        log("Add", str(get_name_from_item_id(item_id)), "at", f"({x},{y})")
         items = save["maps"][town_id]["items"]
         orientation = 0#TODO
         collected_at_timestamp = timestamp_now()
@@ -279,7 +298,7 @@ def do_command(USERID, cmd, args):
     elif cmd == Constant.CMD_SELL_GIFT:
         item_id = args[0]
         town_id = args[1]
-        print("Gift", str(get_name_from_item_id(item_id)), "sold on town:",town_id)
+        log("Gift", str(get_name_from_item_id(item_id)), "sold on town:",town_id)
         gifts = save["privateState"]["gifts"]
         gifts[item_id] -= 1
         if gifts[item_id] == 0: #removes excess zeros at end if necessary
@@ -291,7 +310,7 @@ def do_command(USERID, cmd, args):
     
     elif cmd == Constant.CMD_ACTIVATE_DRAGON:
         currency = args[0]
-        print("Dragon nest activated.")
+        log("Dragon nest activated.")
         if currency == 'c':
             save["playerInfo"]["cash"] = max(int(save["playerInfo"]["cash"] - 50), 0)
         elif currency == 'g':
@@ -301,7 +320,7 @@ def do_command(USERID, cmd, args):
         save["privateState"]["timeStampTakeCare"] = -1 # remove timer if any
     
     elif cmd == Constant.CMD_DESACTIVATE_DRAGON:
-        print("Dragon nest deactivated.")
+        log("Dragon nest deactivated.")
         pState = save["privateState"]
         pState["dragonNestActive"] = 0
         # reset step and dragon numbers
@@ -311,13 +330,13 @@ def do_command(USERID, cmd, args):
 
     elif cmd == Constant.CMD_NEXT_DRAGON_STEP:
         unknown = args[0]
-        print("Dragon step increased.")
+        log("Dragon step increased.")
         pState = save["privateState"]
         pState["stepNumber"] += 1
         pState["timeStampTakeCare"] = timestamp_now()
 
     elif cmd == Constant.CMD_NEXT_DRAGON:
-        print("Dragon step reset and dragonNumber increased.")
+        log("Dragon step reset and dragonNumber increased.")
         pState = save["privateState"]
         pState["stepNumber"] = 0
         pState["dragonNumber"] += 1
@@ -325,18 +344,18 @@ def do_command(USERID, cmd, args):
 
     elif cmd == Constant.CMD_DRAGON_BUY_STEP_CASH:
         price = args[0]
-        print("Buy dragon step with cash.")
+        log("Buy dragon step with cash.")
         save["playerInfo"]["cash"] = max(int(save["playerInfo"]["cash"] - price), 0)
         save["privateState"]["timeStampTakeCare"] = -1 # remove timer
 
     elif cmd == Constant.CMD_RIDER_BUY_STEP_CASH:
         price = args[0]
-        print("Buy rider step with cash.")
+        log("Buy rider step with cash.")
         save["playerInfo"]["cash"] = max(int(save["playerInfo"]["cash"] - price), 0)
         save["privateState"]["riderTimeStamp"] = -1 # remove timer
 
     elif cmd == Constant.CMD_NEXT_RIDER_STEP:
-        print("Rider step increased.")
+        log("Rider step increased.")
         pState = save["privateState"]
         pState["riderStepNumber"] += 1
         pState["riderTimeStamp"] = timestamp_now()
@@ -346,19 +365,19 @@ def do_command(USERID, cmd, args):
         pState = save["privateState"]
         if number == 1 or number == 2 or number == 3:
             pState["riderNumber"] = number
-            print("Rider", number, "Selected.")
+            log("Rider", number, "Selected.")
         else:
             pState["riderNumber"] = 0
             pState["riderStepNumber"] = 0
             pState["riderTimeStamp"] = -1 # remove timer
-            print("Rider reset.")
+            log("Rider reset.")
     
     elif cmd == Constant.CMD_ORIENT:
         x = args[0]
         y = args[1]
         new_orientation = args[2]
         town_id = args[3]
-        print("Item at", f"({x},{y})", "changed to orientation", new_orientation)
+        log("Item at", f"({x},{y})", "changed to orientation", new_orientation)
         map = save["maps"][town_id]
         for item in map["items"]:
             if item[1] == x and item[2] == y:
@@ -367,13 +386,13 @@ def do_command(USERID, cmd, args):
     
     elif cmd == Constant.CMD_MONSTER_BUY_STEP_CASH:
         price = args[0]
-        print("Buy monster step with cash.")
+        log("Buy monster step with cash.")
         save["playerInfo"]["cash"] = max(int(save["playerInfo"]["cash"] - price), 0)
         save["privateState"]["timeStampTakeCareMonster"] = -1 # remove timer
     
     elif cmd == Constant.CMD_ACTIVATE_MONSTER:
         currency = args[0]
-        print("Monster nest activated.")
+        log("Monster nest activated.")
         if currency == 'c':
             save["playerInfo"]["cash"] = max(int(save["playerInfo"]["cash"] - 50), 0)
         elif currency == 'g':
@@ -383,7 +402,7 @@ def do_command(USERID, cmd, args):
         save["privateState"]["timeStampTakeCareMonster"] = -1 # remove timer if any
     
     elif cmd == Constant.CMD_DESACTIVATE_MONSTER: # cmd called too late
-        print("Monster nest deactivated.")
+        log("Monster nest deactivated.")
         pState = save["privateState"]
         pState["monsterNestActive"] = 0
         pState["stepMonsterNumber"] = 0
@@ -392,13 +411,13 @@ def do_command(USERID, cmd, args):
 
 
     elif cmd == Constant.CMD_NEXT_MONSTER_STEP:
-        print("Monster Step increased.")
+        log("Monster Step increased.")
         pState = save["privateState"]
         pState["stepMonsterNumber"] += 1
         pState["timeStampTakeCareMonster"] = timestamp_now()
 
     elif cmd == Constant.CMD_NEXT_MONSTER:
-        print("Monster Step reset and Monster Number increased.")
+        log("Monster Step reset and Monster Number increased.")
         pState = save["privateState"]
         pState["stepMonsterNumber"] = 0
         pState["monsterNumber"] += 1
@@ -411,24 +430,23 @@ def do_command(USERID, cmd, args):
         claimId = args[3]
         cash = args[4]
 
-        print("Claiming Win Bonus")
+        log("Claiming Win Bonus")
         map = save["maps"][town_id]
 
         if cash != 0:
             save["playerInfo"]["cash"] = save["playerInfo"]["cash"] + cash
-            print("Added " + str(cash) + " Cash to players balance")
+            log("Added " + str(cash) + " Cash to players balance")
 
         if coins != 0:
             map["coins"] = map["coins"] + coins
-            print("Added " + str(coins) + " Gold to players balance")
+            log("Added " + str(coins) + " Gold to players balance")
 
         if hero != 0:
             length = len(save["privateState"]["gifts"])
             if length <= hero:
-                for i in range(hero - length + 1):
-                    save["privateState"]["gifts"].append(0)
+                save["privateState"]["gifts"].extend([0] * (hero - length + 1))
             save["privateState"]["gifts"][hero] += 1
-            print("Added Hero ID=" + str(hero))
+            log("Added Hero ID=" + str(hero))
 
         pState = save["privateState"]
         pState["bonusNextId"] = claimId + 1
@@ -437,15 +455,15 @@ def do_command(USERID, cmd, args):
     elif cmd == Constant.CMD_ADMIN_ADD_ANIMAL:
         subcatFunc = str(args[0])
         toBeAdded = int(args[1])
-        print("Added", toBeAdded, get_item_from_subcat_functional(subcatFunc)["name"])
+        log("Added", toBeAdded, get_item_from_subcat_functional(subcatFunc)["name"])
 
         # TODO
         oAnimals: dict = save["privateState"]["arrayAnimals"]
-        oAnimals[subcatFunc] = toBeAdded + (oAnimals[subcatFunc] if subcatFunc in oAnimals else 0)
+        oAnimals[subcatFunc] = toBeAdded + oAnimals.get(subcatFunc, 0)
     
     elif cmd == Constant.CMD_GRAVEYARD_BUY_POTIONS:
         # no args
-        print("Graveyard buy potion")
+        log("Graveyard buy potion")
         # info from config
         graveyard_potions = get_game_config()["globals"]["GRAVEYARD_POTIONS"]
         amount = graveyard_potions["amount"]
@@ -461,7 +479,7 @@ def do_command(USERID, cmd, args):
         y = args[2]
         town_id = args[3]
         bool_used_potion = len(args) > 4 and args[4] == '1'
-        print("Resurrect", str(get_name_from_item_id(unit_id)), "from graveyard")
+        log("Resurrect", str(get_name_from_item_id(unit_id)), "from graveyard")
         # pay
         if bool_used_potion:
             quantity = 1
@@ -472,7 +490,8 @@ def do_command(USERID, cmd, args):
         collected_at_timestamp = timestamp_now()
         level = 0 # TODO 
         orientation = 0
-        map["items"] += [[id, x, y, orientation, collected_at_timestamp, level]]
+        map = save["maps"][town_id]
+        map["items"] += [[unit_id, x, y, orientation, collected_at_timestamp, level]]
 
     elif cmd == Constant.CMD_BUY_SUPER_OFFER_PACK:
         town_id = args[0]
@@ -487,23 +506,22 @@ def do_command(USERID, cmd, args):
             item_id = int(item)
             length = len(save["privateState"]["gifts"])
             if length <= item_id:
-                for i in range(item_id - length + 1):
-                    save["privateState"]["gifts"].append(0)
+                save["privateState"]["gifts"].extend([0] * (item_id - length + 1))
             save["privateState"]["gifts"][item_id] += 1
 
         save["playerInfo"]["cash"] = max(save["playerInfo"]["cash"] - cash_used, 0)#maybe make function for editing resources
-        print(f"Used {cash_used} cash to buy super offer pack!")
+        log(f"Used {cash_used} cash to buy super offer pack!")
 
     elif cmd == Constant.CMD_SET_STRATEGY:
         strategy_type = args[0]
         type_name = get_strategy_type(strategy_type)
         save["privateState"]["strategy"] = strategy_type
-        print(f"Set defense strategy type to {type_name}")
+        log(f"Set defense strategy type to {type_name}")
 
     elif cmd == Constant.CMD_START_QUEST:
         quest_id = args[0]
         town_id = args[1]
-        print(f"Start quest {quest_id}")
+        log(f"Start quest {quest_id}")
 
     elif cmd == Constant.CMD_END_QUEST:
         data = json.loads(args[0])
@@ -515,8 +533,8 @@ def do_command(USERID, cmd, args):
         duration_sec = data["duration"]
         voluntary_end = data["voluntary_end"] == 1
         quest_id = int(data["quest_id"])
-        item_rewards = data["item_rewards"] if "item_rewards" in data else None
-        activators_left = data["activators_left"] if "activators_left" in data else None
+        item_rewards = data.get("item_rewards")
+        activators_left = data.get("activators_left")
         difficulty = data["difficulty"]
 
         # Resources
@@ -529,14 +547,35 @@ def do_command(USERID, cmd, args):
         # save["maps"]["questTimes"] [quest_id] = TODO min (... , duration_sec)
         # save["maps"]["lastQuestTimes"] [quest_id] = TODO min (... , duration_sec)
 
-        print(f"Ended quest {quest_id}.")
+        log(f"Ended quest {quest_id}.")
 
     elif cmd == Constant.CMD_ADD_COLLECTABLE:
-        collection_id = args[0]
-        collectible_id = args[1]
-        # TODO 
+        collection_id = int(args[0])
+        collectible_id = int(args[1])
+        # The client reports a unit-collection pickup here and expects the state
+        # back on the next full load; without this the collectible is lost.
+        # privateState.collections is a list indexed by collection id, each slot
+        # holding the collected ids: see villages/quests/100000047.json, a
+        # snapshot written by the original server.
+        categories = get_game_config().get("units_collections_categories") or {}
+        category = categories.get(str(collection_id))
+        if category is None or not 0 <= collectible_id < len(category.get("units") or []):
+            # Checked against the config so an unknown id cannot grow the save.
+            log(f"Ignored unknown collection pickup: {collection_id}/{collectible_id}")
+            return
+        collections = save["privateState"].get("collections")
+        if not isinstance(collections, list):
+            collections = save["privateState"]["collections"] = []
+        while len(collections) <= collection_id:
+            collections.append([])
+        slot = collections[collection_id]
+        if not isinstance(slot, list):
+            slot = collections[collection_id] = []
+        if collectible_id not in slot:
+            slot.append(collectible_id)
+        log(f"Collected {collectible_id} of collection {collection_id}.")
 
     else:
-        print(f"Unhandled command '{cmd}' -> args", args)
+        log(f"Unhandled command '{cmd}' -> args", args)
         return
     

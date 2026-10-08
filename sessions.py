@@ -1,17 +1,22 @@
+import contextlib
+import copy
+import functools
 import json
 import os
-import copy
-import uuid
 import random
-from flask import session
-# from flask_session import SqlAlchemySessionInterface, current_app
+import shutil
+import sys
+import threading
+import time
+import uuid
 
-from version import version_code
-from engine import timestamp_now
-from version import migrate_loaded_save
+from bundle import SAVES_DIR, VILLAGES_DIR
 from constants import Constant
+from engine import timestamp_now
+from logger import log
 
-from bundle import VILLAGES_DIR, SAVES_DIR
+# from flask_session import SqlAlchemySessionInterface, current_app
+from version import migrate_loaded_save, version_code
 
 __villages = {}  # ALL static neighbors
 '''__villages = {
@@ -33,10 +38,37 @@ __saves = {}  # ALL saved villages
     "USERID_2": {...}
 }'''
 
-__initial_village = json.load(open(os.path.join(VILLAGES_DIR, "initial.json")))
+# One re-entrant lock for all in-memory village state. The dev server runs
+# threaded (see server.py) and a command batch is a read-modify-write over the
+# very dictionaries save_session serializes. Without this, concurrent requests
+# either tear a save file or make json.dump fail with "dictionary changed size
+# during iteration". Single global lock on purpose: a local server has no
+# throughput problem to solve, and correctness here beats granularity. If the
+# server ever needs per-player concurrency, the next step is one lock per
+# USERID plus copy-on-write snapshots, not a weaker global lock.
+state_lock = threading.RLock()
+
+
+def synchronized(function):
+    """Hold the state lock for a whole call. Re-entrant, so nesting is safe."""
+    @functools.wraps(function)
+    def wrapper(*args, **kwargs):
+        with state_lock:
+            return function(*args, **kwargs)
+    return wrapper
+
+
+with open(os.path.join(VILLAGES_DIR, "initial.json"), encoding="utf-8") as f:
+    __initial_village = json.load(f)
 
 # Load saved villages
 
+# One rolling backup per player, refreshed at most this often (seconds). Set
+# SE_BACKUP_SECONDS=0 to disable, or a larger value to back up less often.
+BACKUP_INTERVAL_SECONDS = int(os.environ.get("SE_BACKUP_SECONDS", 3600))
+
+
+@synchronized
 def load_saved_villages():
     global __villages
     global __saves
@@ -48,18 +80,27 @@ def load_saved_villages():
         try:
             print(f"Creating '{SAVES_DIR}' folder...")
             os.mkdir(SAVES_DIR)
-        except:
+        except OSError:
             print(f"Could not create '{SAVES_DIR}' folder.")
-            exit(1)
+            # sys.exit, not exit(): the builtin comes from site.py, which a
+            # frozen (PyInstaller) build never executes.
+            sys.exit(1)
     if not os.path.isdir(SAVES_DIR):
         print(f"'{SAVES_DIR}' is not a folder... Move the file somewhere else.")
-        exit(1)
+        sys.exit(1)
+    # villages/ ships with the app (and is bundled into the frozen build), so a
+    # missing one means a broken installation, not a user mistake: say so
+    # instead of dying with a bare FileNotFoundError from os.listdir.
+    if not os.path.isdir(VILLAGES_DIR):
+        print(f"'{VILLAGES_DIR}' is not a folder... The installation is incomplete.")
+        sys.exit(1)
     # Static neighbors in /villages
     for file in os.listdir(VILLAGES_DIR):
         if file == "initial.json" or not file.endswith(".json"):
             continue
         print(f" * Loading static neighbour {file}... ", end='')
-        village = json.load(open(os.path.join(VILLAGES_DIR, file)))
+        with open(os.path.join(VILLAGES_DIR, file), encoding="utf-8") as vf:
+            village = json.load(vf)
         if not is_valid_village(village):
             print("Invalid neighbour")
             continue
@@ -75,9 +116,10 @@ def load_saved_villages():
             continue
         print(f" * Loading save at {file}... ", end='')
         try:
-            save = json.load(open(os.path.join(SAVES_DIR, file)))
-        except json.decoder.JSONDecodeError as e:
-            print("Corrupted JSON.")
+            with open(os.path.join(SAVES_DIR, file), encoding="utf-8") as sf:
+                save = json.load(sf)
+        except json.decoder.JSONDecodeError as error:
+            print(f"Corrupted JSON: {error}")
             continue
         if not is_valid_village(save):
             print("Invalid Save.")
@@ -85,7 +127,9 @@ def load_saved_villages():
         USERID = save["playerInfo"]["pid"]
         try:
             map_name = save["playerInfo"]["map_names"][ save["playerInfo"]["default_map"] ]
-        except:
+        except (KeyError, IndexError, TypeError):
+            # Only the log line below needs it; a save must never be dropped
+            # because its map name is missing or of the wrong shape.
             map_name = '?'
         print(f"({map_name}) Ok.")
         __saves[str(USERID)] = save
@@ -96,6 +140,7 @@ def load_saved_villages():
 
 # New village
 
+@synchronized
 def new_village() -> str:
     # Generate USERID
     USERID: str = str(uuid.uuid4())
@@ -116,14 +161,17 @@ def new_village() -> str:
 
 # Access functions
 
+@synchronized
 def all_saves_userid() -> list:
     "Returns a list of the USERID of every saved village."
     return list(__saves.keys())
 
+@synchronized
 def all_userid() -> list:
     "Returns a list of the USERID of every village."
     return list(__villages.keys()) + list(__saves.keys())
 
+@synchronized
 def save_info(USERID: str) -> dict:
     save = __saves[USERID]
     default_map = save["playerInfo"]["default_map"]
@@ -132,16 +180,19 @@ def save_info(USERID: str) -> dict:
     level = save["maps"][default_map]["level"]
     return{"userid": USERID, "name": empire_name, "xp": xp, "level": level}
 
+@synchronized
 def all_saves_info() -> list:
     saves_info = []
     for userid in __saves:
         saves_info.append(save_info(userid))
     return list(saves_info)
 
+@synchronized
 def session(USERID: str) -> dict:
     assert(isinstance(USERID, str))
-    return __saves[USERID] if USERID in __saves else None
+    return __saves.get(USERID)
 
+@synchronized
 def neighbor_session(USERID: str) -> dict:
     assert(isinstance(USERID, str))
     if USERID in __saves:
@@ -149,69 +200,49 @@ def neighbor_session(USERID: str) -> dict:
     if USERID in __villages:
         return __villages[USERID]
 
+# The three Arthur ids are story islands, not players: the client requests them
+# through the quest endpoint, so they must never be listed as a neighbour.
+_ARTHUR_PIDS = frozenset(str(pid) for pid in (
+    Constant.NEIGHBOUR_ARTHUR_GUINEVERE_1,
+    Constant.NEIGHBOUR_ARTHUR_GUINEVERE_2,
+    Constant.NEIGHBOUR_ARTHUR_GUINEVERE_3,
+))
+
+
+def _neighbour_sources(USERID: str):
+    """Yield ``(playerInfo, first map)`` for everyone a client may see.
+
+    Static villages come first, then saved ones, which is the order the client
+    already receives. The requesting player is never listed to itself.
+    """
+    for entry in list(__villages.values()) + list(__saves.values()):
+        player_info = entry["playerInfo"]
+        pid = str(player_info["pid"])
+        if pid == USERID or pid in _ARTHUR_PIDS:
+            continue
+        yield player_info, entry["maps"][0]
+
+
+@synchronized
 def fb_friends_str(USERID: str) -> list:
-    DELETE_ME = [{"uid": "1111", "pic_square":"http://127.0.0.1:5050/img/profile/Paladin_Justiciero.jpg"},
-        {"uid": "aa_002", "pic_square":"/1025.png"}]
     friends = []
-    # static villages
-    for key in __villages:
-        vill = __villages[key]
-        # Avoid Arthur being loaded as friend.
-        if vill["playerInfo"]["pid"] == Constant.NEIGHBOUR_ARTHUR_GUINEVERE_1 \
-        or vill["playerInfo"]["pid"] == Constant.NEIGHBOUR_ARTHUR_GUINEVERE_2 \
-        or vill["playerInfo"]["pid"] == Constant.NEIGHBOUR_ARTHUR_GUINEVERE_3:
-            continue
-        frie = {}
-        frie["uid"] = vill["playerInfo"]["pid"]
-        frie["pic_square"] = vill["playerInfo"]["pic"]
-        if not frie["pic_square"]: frie["pic_square"] = "/img/profile/1025.png"
-        friends += [frie]
-    # other players
-    for key in __saves:
-        vill = __saves[key]
-        if vill["playerInfo"]["pid"] == USERID:
-            continue
-        frie = {}
-        frie["uid"] = vill["playerInfo"]["pid"]
-        frie["pic_square"] = vill["playerInfo"]["pic"]
-        if not frie["pic_square"]: frie["pic_square"] = "/img/profile/1025.png"
-        friends += [frie]
+    for player_info, _first_map in _neighbour_sources(USERID):
+        friends.append({
+            "uid": player_info["pid"],
+            "pic_square": player_info["pic"] or "/img/profile/1025.png",
+        })
     return friends
 
+
+@synchronized
 def neighbors(USERID: str) -> list:
-    neighbors = []
-    # static villages
-    for key in __villages:
-        vill = __villages[key]
-        # Avoid Arthur being loaded as multiple neigtbors.
-        if vill["playerInfo"]["pid"] == Constant.NEIGHBOUR_ARTHUR_GUINEVERE_1 \
-        or vill["playerInfo"]["pid"] == Constant.NEIGHBOUR_ARTHUR_GUINEVERE_2 \
-        or vill["playerInfo"]["pid"] == Constant.NEIGHBOUR_ARTHUR_GUINEVERE_3:
-            continue
-        neigh = vill["playerInfo"]
-        neigh["coins"] = vill["maps"][0]["coins"]
-        neigh["xp"] = vill["maps"][0]["xp"]
-        neigh["level"] = vill["maps"][0]["level"]
-        neigh["stone"] = vill["maps"][0]["stone"]
-        neigh["wood"] = vill["maps"][0]["wood"]
-        neigh["food"] = vill["maps"][0]["food"]
-        neigh["stone"] = vill["maps"][0]["stone"]
-        neighbors += [neigh]
-    # other players
-    for key in __saves:
-        vill = __saves[key]
-        if vill["playerInfo"]["pid"] == USERID:
-            continue
-        neigh = vill["playerInfo"]
-        neigh["coins"] = vill["maps"][0]["coins"]
-        neigh["xp"] = vill["maps"][0]["xp"]
-        neigh["level"] = vill["maps"][0]["level"]
-        neigh["stone"] = vill["maps"][0]["stone"]
-        neigh["wood"] = vill["maps"][0]["wood"]
-        neigh["food"] = vill["maps"][0]["food"]
-        neigh["stone"] = vill["maps"][0]["stone"]
-        neighbors += [neigh]
-    return neighbors
+    neighbours = []
+    for player_info, first_map in _neighbour_sources(USERID):
+        neigh = dict(player_info)
+        for resource in ("coins", "xp", "level", "stone", "wood", "food"):
+            neigh[resource] = first_map[resource]
+        neighbours.append(neigh)
+    return neighbours
 
 # Check for valid village
 # The reason why this was implemented is to warn the user if a save game from Social Wars was used by accident
@@ -227,22 +258,59 @@ def is_valid_village(save: dict):
             return False
         if "items" not in map:
             return False
-        if type(map["items"]) != list:
+        if not isinstance(map["items"], list):
             return False
 
     return True
 
 # Persistency
 
+@synchronized
 def backup_session(USERID: str):
-    # TODO 
-    return
+    """Keep one recent copy of the save file, so a bad write stays recoverable.
 
+    The save file is the player's entire progress and it is rewritten on every
+    command batch, so one corrupt write would lose everything. One backup per
+    player, refreshed at most every SE_BACKUP_SECONDS (default one hour; 0
+    disables it), taken from the file as it was *before* the current write.
+    """
+    if BACKUP_INTERVAL_SECONDS <= 0:
+        return
+    final_path = os.path.join(SAVES_DIR, f"{USERID}.save.json")
+    backup_path = final_path + ".bak"
+    if not os.path.exists(final_path):
+        return
+    try:
+        if os.path.exists(backup_path):
+            age = time.time() - os.path.getmtime(backup_path)
+            if age < BACKUP_INTERVAL_SECONDS:
+                return
+        shutil.copyfile(final_path, backup_path)
+        log(f" * Backed up {os.path.basename(final_path)}")
+    except OSError as error:
+        # Not being able to back up is bad; refusing to save because of it is
+        # worse, so this never propagates.
+        print(f"[WARN] could not back up {final_path}: {error!r}")
+
+
+@synchronized
 def save_session(USERID: str):
-    # TODO 
     file = f"{USERID}.save.json"
-    print(f" * Saving village at {file}... ", end='')
+    log(f" * Saving village at {file}... ", end='')
     village = session(USERID)
-    with open(os.path.join(SAVES_DIR, file), 'w') as f:
-        json.dump(village, f, indent=4)
-    print("Done.")
+    backup_session(USERID)
+    final_path = os.path.join(SAVES_DIR, file)
+    # Unique temp name per writer: a fixed "<save>.tmp" collides when two threads
+    # (or two server processes) save at once, and Windows refuses to reopen a
+    # file that another writer still holds.
+    tmp_path = f"{final_path}.{os.getpid()}.{threading.get_ident()}.tmp"
+    try:
+        with open(tmp_path, 'w', encoding="utf-8") as f:
+            json.dump(village, f, indent=4)
+        os.replace(tmp_path, final_path)
+    except BaseException:
+        # Never leave a partial temp file behind.
+        with contextlib.suppress(OSError):
+            os.remove(tmp_path)
+        raise
+    log("Done.")

@@ -1,6 +1,6 @@
-import os
-import json
 import copy
+import json
+import os
 
 # CONFIG
 patch_filename = "../config/patch/unit_patch.json"
@@ -8,7 +8,8 @@ patch_filename = "../config/patch/unit_patch.json"
 input_csv = "se_unit_patch.csv"
 
 # DO THE THING
-templates = json.load(open("unit_templates.json", 'r', encoding='utf-8'))
+with open("unit_templates.json", 'r', encoding='utf-8') as templates_file:
+	templates = json.load(templates_file)
 
 num_units = 0
 lines = []
@@ -17,7 +18,6 @@ storage = {}
 if os.path.exists(input_csv):
 	with open(input_csv, "r", encoding='utf-8') as f:
 		lines = f.readlines()
-		f.close()
 
 def trimquotes(inputstr: str):
 	new = inputstr

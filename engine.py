@@ -1,10 +1,14 @@
 import time
 
-from get_game_config import get_attribute_from_item_id
+from get_game_config import get_item_from_id
+
 
 def apply_cost(playerInfo: dict, map: dict, id: int, price_multiplier: int) -> None:
-    cost = int(price_multiplier * int(get_attribute_from_item_id(id, "cost")))
-    cost_type = get_attribute_from_item_id(id, "cost_type")
+    item = get_item_from_id(id)
+    if not item:
+        return
+    cost = int(price_multiplier * int(item.get("cost", 0) or 0))
+    cost_type = item.get("cost_type")
     if cost_type == "w":
         map["wood"] = max(map["wood"] - cost, 0)
     elif cost_type == "g":
@@ -17,9 +21,13 @@ def apply_cost(playerInfo: dict, map: dict, id: int, price_multiplier: int) -> N
         map["food"] = max(map["food"] - cost, 0)
 
 def apply_collect(playerInfo: dict, map: dict, id: int, resource_multiplier: int) -> None:
-    collect = int(resource_multiplier * int(get_attribute_from_item_id(id, "collect")))
-    collect_type = get_attribute_from_item_id(id, "collect_type")
-    apply_collect_xp(map, id)
+    item = get_item_from_id(id)
+    if not item:
+        return
+    collect = int(resource_multiplier * int(item.get("collect", 0) or 0))
+    collect_type = item.get("collect_type")
+    collect_xp = int(item.get("collect_xp", 0) or 0)
+    map["xp"] = map["xp"] + collect_xp
     if collect_type == "w":
         map["wood"] = map["wood"] + collect
     elif collect_type == "g":
@@ -32,7 +40,10 @@ def apply_collect(playerInfo: dict, map: dict, id: int, resource_multiplier: int
         map["food"] = map["food"] + collect
 
 def apply_collect_xp(map: dict, id: int) -> None:
-    collect_xp = int(get_attribute_from_item_id(id, "collect_xp"))
+    item = get_item_from_id(id)
+    if not item:
+        return
+    collect_xp = int(item.get("collect_xp", 0) or 0)
     map["xp"] = map["xp"] + collect_xp
 
 def timestamp_now() -> int:
