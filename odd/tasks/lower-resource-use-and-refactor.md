@@ -207,7 +207,6 @@ the `.bak` is a valid 93 KB JSON holding the complete village.
 
 The user chose to stop here and keep the remaining unknowns documented rather than
 install a decompiler or run another capture session. What stays open, and why:
-
 - **`questTimes` / `lastQuestTimes` structure**: unknown. Empty in all 36 save and
   snapshot files, across every map of every file. Writing a guessed shape risks
   crashing the client when it reads it.
@@ -220,6 +219,27 @@ install a decompiler or run another capture session. What stays open, and why:
 
 Everything else described in this document is implemented and verified, and the
 user's save was restored into the main checkout with a backup kept alongside it.
+
+## Native review: attempted, impossible for this repository
+
+The review switch was on, so the candidate was offered to the native reviewer three
+times, at three very different scopes:
+
+| attempt | candidate | outcome |
+| --- | --- | --- |
+| 1 | the whole branch (293,115 insertions) | `lens_context_budget_exceeded` |
+| 2 | the code commit alone (12 files, 954 lines) | `lens_context_budget_exceeded` |
+| 3 | `server.py` + `logger.py` only (2 files, 279 lines) | `lens_context_budget_exceeded` |
+
+All three were refused in preflight with `mutation_outcome: not_started`: no review
+authority was created, so there is nothing to abandon or repair, and retrying any of
+those exact candidates cannot succeed. Because a 279-line two-file candidate fails
+exactly like a 293k-line one, the budget is consumed by the repository's reviewer
+evidence (the files the lenses must read, and this repository is dominated by
+`constants.py`, `command.py` and the config and mods JSON), not by the candidate's
+diff. Splitting the work further cannot change that, so the work is recorded as
+verified by tests and measurements only, and the review switch is left on for other
+repositories.
 
 ## Verification plan
 
