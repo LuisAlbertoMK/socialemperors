@@ -1,5 +1,192 @@
-# Mods are loaded from the "mods" folder in the order provided below
-# You don't need to provide the .json extension here, just the name
-# If a line starts with #, it is ignored
+## Los mods se cargan desde la carpeta «mods» en el orden que se indica a continuación.
+## No es necesario indicar la extensión .json aquí, solo el nombre.
+## Los mods que tienen un numeral por delante, están desactivados. Para activarlos, deben quitarlo (Esto: "#").
+## ¡Agradecimiento a Venzkaizer, Neutral y a Kiriakos 96d por los mods!
 
-# mod_venzkaizer
+
+
+=====================================================================================
+
+
+# MODIFICAR EDIFICIOS DE RECURSOS
+### Este mod te permite cambiar la cantidad de recursos que producen los edificios de recursos.
+### Para hacerlo deberás abrir el archivo "farms.json" dentro de la carpeta de mods.
+### Una vez dentro buscas el edificio que quieras y modificas el número que le sigue a la palabra "collect".
+### Ten en cuenta que la cantidad que introduzcas es en base a la opción de 1h pero modificará el resto de opciones.
+### (Ejemplo) si estableces que el molino te dé 2.000:  5 min > 1000 | 1 h > 2000 | 4 h > 4000 | 8 h > 6000
+farms
+
+
+# IGNORAR INVITAR AMIGOS
+### Estos mods hacen que no sea necesario invitar amigos para construir ciertos edificios o al comprar un terreno.
+mod_social_building
+mod_land_expansions
+
+# MÁQUINA DEL TIEMPO
+### Este mod agrega la maquina del tiempo en la tienda de edificios.
+mod_time_machine
+
+
+# CASH WONDER ROTO
+### Este mod hace que el edificio "Cash Wonder" te otorgue 1.000 de cash cada 5 segundos.
+#CashWonder_Mod
+
+
+# MODO CIVILIZACIÓN TROLL
+### Añade edificios de trolls a la tienda para la civilización troll.
+### Para que el mod funcione correctamente, tendrás que ir a tu archivo de guardado (save).
+### Ábrelo con el Bloc de notas y cambia la raza de «h» a «t».
+### Este mod es experimental y está pensado para jugarse con "troll civilization.save".
+#mod_troll_civilization
+
+
+# TODO DESBLOQUEADO
+### Da acceso a todos los edificios y unidades del juego (incluidos los ocultos).
+#Master_Builder_Mod3.0
+
+
+# MÁS DECORACIONES
+### Agrega más decoraciones a la tienda.
+More_Decorations_Mod
+
+
+# OTROS MODS
+### No se sabe exactamente qué hacen estos mods, pero parecen importantes jeje.
+#mod_venzkaizer
+viral_icons
+level_up_tips
+
+
+
+=====================================================================================
+
+
+# FACCIÓN:  TROLLS
+### Agrega la facción Troll a la tienda.
+#mod_trolls_shop
+
+
+# FACCIÓN:  GLADIADORES
+### Agrega la facción Romana a la tienda.
+#Gladiator_Mod
+
+
+# FACCIÓN:  ATLÁNTICOS
+### Agrega la facción Atlántica a la tienda.
+#Atlantis_mod
+
+
+# FACCIÓN:  CHINOS
+### Agrega a la facción China a la tienda.
+#Chinese_Mod
+
+
+# FACCIÓN:  AZTECAS
+### Agrega a la facción Azteca a la tienda.
+#Aztec_Mod
+
+
+# FACCIÓN:  EGIPCIOS
+### Agrega a la facción Egipcia a la tienda.
+#Egyptian_Mod
+
+
+# FACCIÓN:  VIKINGOS
+### Agrega a la facción Vikinga a la tienda.
+#Vikings_Mod
+
+
+# FACCIÓN:  INFERNALES
+### Agrega a la facción Infernal a la tienda.
+#Infernal_mod
+
+
+# FACCIÓN:  ELFOS
+### Agrega a la facción Élfica a la tienda.
+#Elf_Mod
+
+
+# FACCIÓN:  ELFOS IMPERIALES
+### Agrega a la facción Élfica Imperial a la tienda.
+#Imperial_Elf_Mod
+
+
+# FACCIÓN:  CELESTIALES
+### Agrega a la facción Celestial a la tienda.
+#Celestial_mod
+
+
+# FACCIÓN:  HALLOWEEN
+### Agrega a la facción de Halloween a la tienda.
+#Haloween_mod
+
+
+# FACCIÓN:  ORCOS OSCUROS
+### Agrega a la facción de Orcos Oscuros a la tienda.
+#Dark_orc
+
+
+# FACCIÓN:  NECROS
+### Agrega a la facción Necro a la tienda.
+#Necro_Mod
+
+
+# FACCIÓN:  MITOLÓGICOS
+### Agrega a la facción Mitológica a la tienda.
+#Mythological_mod
+
+
+
+==========================================================
+
+
+### ADVERTENCIA: Si utilizas estos mods de SW en tu partida, los archivos guardados dejarán de funcionar sin los mods.
+Tendrás que eliminar manualmente las unidades añadidas por el mod para que la partida guardada funcione. 
+
+# UNIDADES DE SOCIAL WARS
+### Agrega unidades de SW a tu partida de Social E.pires.
+### Para que las unidades se muestren correctamente, debes mover los assets y los thumps de Social Wars a Social Empires.
+#SW_soldiers
+
+
+# EDIFICIOS DE SOCIAL WARS
+### Agrega edificios de SW a tu partida de Social Empires.
+### Para que los edificios se muestren correctamente, debes mover los assets y los thumps de Social Wars a Social Empires.
+### Ten en cuenta que la mayoría de edificios no tienen propiedades funcionales.
+#SE_SW
+
+
+
+===========================================================================
+
+
+Estos mods ya están incluidos en la última versión del juego, por lo que no es necesario aplicarlos.
+
+# EXTREME DRAGONS
+### Agrega dragones extremos al juego.
+mod_extremedragons
+
+
+# EPIC DRAGONS
+### Agrega dragones épicos y colosos al juego.
+mod_epicdragons
+
+
+# SAVAGE DRAGONS
+### Agrega dragones salvajes al juego.
+mod_savagedragons
+
+
+# ACIENT DRAGONS
+### Agrega dragones antiguos al juego.
+mod_ancientdragons
+
+
+# ARMORED DRAGONS
+### Agrega dragones con armadura y dioses al juego.
+mod_armoreddragons
+
+
+# DRAGON RIDERS
+### Permite que los jinetes sean compatibles con algunos dragones faltantes (asegúrate de haber añadido los otros mods de dragones).
+mod_riders
