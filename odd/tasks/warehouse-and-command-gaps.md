@@ -52,6 +52,32 @@ and that it survives a reload. The full suite is 231 tests.
   `{"si": []}`. So the "construction help" commands do have server-side state; the
   earlier note that they needed no action was wrong.
 
+## What the evidence says about the remaining commands (checked, not guessed)
+
+Two of my own hypotheses died against the config and the original saves:
+
+- `activation` in the config is **a time in seconds** (a Gold Mine has `21600`, six
+  hours; others `0.36`, `32.4`, `90`, `86400`), not a level. So `activate [59, 46, 0,
+  13, 4]` on a Gold Mine is not "set the level to 4".
+- The item's 6th element (the level) is **0 in every single one of the original
+  server's saves** and in the player's save, so where a level would go is unproven.
+  Implementing `activate` would mean writing a guessed number into a save.
+- `upgrades_to` shows how a building upgrade works: the item **changes id** (House I
+  -> House II -> House III). That means the upgrade the player performs is already
+  carried by the pair the capture shows: `CMD_SELL` with the reason `UPGR` removes the
+  old building and the following `CMD_BUY` places the new one. `CMD_UPGRADE` may
+  therefore be a notification rather than a state change.
+- The construction-help state exists (`{"si": []}`) but **no original save has it
+  non-empty**, so what the list holds is unknown.
+- `buy_magic`: the config has 15 magics with `{id, name, mana, gold, cash, level}` and
+  the captured calls are `[2, 0, 0]` and `[5, 0, 0]`, but `privateState.magics` is a
+  **list** in the original saves and a **dict** in this project's `villages/initial.json`,
+  and the two disagree. Writing either shape could be wrong.
+
+Conclusion: what is left needs either the client (capture 1.1.5 while playing, which is
+what revealed the collectibles and the warehouse) or a decompiler. Nothing here is worth
+guessing, because every one of these writes into a player's save.
+
 ## On 1.1.5 specifically
 
 - Its content is already covered: of its 36 art ids, 20 are not in the base config
