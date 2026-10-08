@@ -16,6 +16,27 @@ from logger import log
 from sessions import save_session, session, synchronized
 
 
+def _warehouse(save: dict) -> dict:
+    """The stored-items map, created on demand.
+
+    The original server kept it as ``privateState.store``, keyed by item id as a
+    string: ``{"141": 1, "57": 1, ...}`` (see villages/quests/100000023.json).
+    """
+    store = save["privateState"].get("store")
+    if not isinstance(store, dict):
+        store = save["privateState"]["store"] = {}
+    return store
+
+
+def _take_from_warehouse(store: dict, item_id: int) -> None:
+    key = str(item_id)
+    remaining = int(store.get(key, 0)) - 1
+    if remaining > 0:
+        store[key] = remaining
+    else:
+        store.pop(key, None)
+
+
 def get_strategy_type(id):
     if id == 8:
         return "Defensive"
@@ -277,6 +298,43 @@ def do_command(USERID, cmd, args):
         if length <= item_id:
             save["privateState"]["gifts"].extend([0] * (item_id - length + 1))
         save["privateState"]["gifts"][item_id] += 1
+
+    elif cmd == Constant.CMD_STORE_ITEM_FROMBUG:
+        # The client's other way of storing an item. CMD_STORE_ITEM feeds the gifts
+        # list; this one feeds the warehouse, which the original server kept in
+        # privateState.store as {item_id: count}.
+        x = args[0]
+        y = args[1]
+        town_id = int(args[2])
+        item_id = int(args[3])
+        map = save["maps"][town_id]
+        for idx, item in enumerate(map["items"]):
+            if isinstance(item, list) and item[0] == item_id and item[1] == x and item[2] == y:
+                del map["items"][idx]
+                warehouse = _warehouse(save)
+                warehouse[str(item_id)] = int(warehouse.get(str(item_id), 0)) + 1
+                log("Stored", str(get_name_from_item_id(item_id)), "in the warehouse")
+                break
+
+    elif cmd == Constant.CMD_PLACE_STORED_ITEM:
+        item_id = int(args[0])
+        x = args[1]
+        y = args[2]
+        town_id = int(args[3])
+        warehouse = _warehouse(save)
+        if int(warehouse.get(str(item_id), 0)) > 0:
+            _take_from_warehouse(warehouse, item_id)
+            save["maps"][town_id]["items"] += [[item_id, x, y, 0, timestamp_now(), 0]]
+            log("Placed", str(get_name_from_item_id(item_id)), "from the warehouse")
+
+    elif cmd == Constant.CMD_SELL_STORED:
+        item_id = int(args[0])
+        warehouse = _warehouse(save)
+        if int(warehouse.get(str(item_id), 0)) > 0:
+            # Only the stored count changes. The client did not say what the sale
+            # paid, and inventing a refund would hand out resources for free.
+            _take_from_warehouse(warehouse, item_id)
+            log("Sold", str(get_name_from_item_id(item_id)), "from the warehouse")
 
     elif cmd == Constant.CMD_PLACE_GIFT:
         item_id = args[0]
