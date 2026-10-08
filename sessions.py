@@ -132,8 +132,15 @@ def load_saved_villages():
             # because its map name is missing or of the wrong shape.
             map_name = '?'
         print(f"({map_name}) Ok.")
+        try:
+            modified = migrate_loaded_save(save) # check save version for migration
+        except Exception as error:
+            # A save that passes is_valid_village but cannot be migrated (an empty
+            # maps list reaches maps[0]) must not stop the server from starting:
+            # skip it the same way a corrupted file is skipped.
+            print(f"Could not migrate {file}: {error!r}")
+            continue
         __saves[str(USERID)] = save
-        modified = migrate_loaded_save(save) # check save version for migration
         if modified:
             save_session(USERID)
     

@@ -1,5 +1,5 @@
 @echo off
-set NAME=social-emperors_0.04a
+set NAME=social-emperors_0.05a
 
 :main
 call :pyInstaller
