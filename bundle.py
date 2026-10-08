@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 
 # Bundled data (extracted to a temp dir)
 
