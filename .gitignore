@@ -12,3 +12,5 @@ Include/
 Lib/
 Scripts/
 pyvenv.cfg
+# A legacy save shipped inside a mod folder: stays on disk, never in the repo.
+mods/mod_saves & legacy config/*.save.json
