@@ -1,5 +1,5 @@
 @echo off
-set NAME=social-emperors_0.03a
+set NAME=social-emperors_0.05a
 
 :main
 REM Run "launcher_build.bat clean" to wipe the pyInstaller caches. A stale or
