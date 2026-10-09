@@ -7,6 +7,7 @@ the repository root before the application modules are imported.
 
 import os
 import sys
+import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -15,7 +16,13 @@ os.chdir(ROOT)
 
 import pytest  # noqa: E402 - must follow the path setup above
 
+# Point the save directory at a throwaway folder BEFORE the application is imported:
+# importing server loads every save, and a migration would otherwise rewrite the
+# developer's own village as a side effect of running the tests.
 import sessions  # noqa: E402
+
+sessions.SAVES_DIR = tempfile.mkdtemp(prefix="se-tests-saves-")
+
 from server import app  # noqa: E402
 from sessions import new_village  # noqa: E402
 

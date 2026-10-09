@@ -7,17 +7,28 @@
         "cash": 0,
         "completed_tutorial": 0,
         "default_map": 0,
-        "map_names": ["My Empire"],
-        "map_sizes": [0],
+        "map_names": [
+            "My Empire"
+        ],
+        "map_sizes": [
+            0
+        ],
         "world_id": null,
         "sp_ref_uid": 1000,
         "sp_ref_cat_install": "ts",
-        "last_logged_in": -1
+        "last_logged_in": -1,
+        "coins": 99999,
+        "food": 700,
+        "level": 1,
+        "stone": 250,
+        "wood": 850
     },
     "maps": [
         {
             "id": 0,
-            "expansions": [13],
+            "expansions": [
+                13
+            ],
             "timestamp": 0,
             "coins": 99999,
             "xp": 4,
@@ -36,28 +47,216 @@
             "universAttackWin": [],
             "questTimes": [],
             "lastQuestTimes": [],
-            "__#__ITEMS_hint": ["item_id", "x", "y", "orientation", "collected_at_timestamp", "level", "units_array []", "attributes_dict {}"],
+            "__#__ITEMS_hint": [
+                "item_id",
+                "x",
+                "y",
+                "orientation",
+                "collected_at_timestamp",
+                "level",
+                "units_array []",
+                "attributes_dict {}"
+            ],
             "items": [
-                [26, 52, 52, 0, 0, 0, [], {}],
-                [19, 50, 58, 0, 0, 0, [], {}],
-                [512, 50, 44, 2, 0, 0, [], {}],
-                [512, 50, 42, 0, 0, 0, [], {}],
-                [516, 51, 44, 1, 0, 0, [], {}],
-                [516, 51, 42, 0, 0, 0, [], {}],
-                [1, 44, 50, 0, 0, 0, [], {}],
-                [1, 44, 52, 0, 0, 0, [], {}],
-                [19, 45, 50, 0, 0, 0, [], {}],
-                [19, 45, 51, 0, 0, 0, [], {}],
-                [19, 45, 52, 0, 0, 0, [], {}],
-                [19, 45, 53, 0, 0, 0, [], {}],
-                [19, 45, 54, 0, 0, 0, [], {}],
-                [19, 44, 54, 0, 0, 0, [], {}],
-                [19, 43, 54, 0, 0, 0, [], {}],
-                [29, 51, 47, 0, 0, 0, [], {}],
-                [29, 59, 49, 0, 0, 0, [], {}],
-                [525, 40, 40, 0, 0, 0, [], {}],
-                [525, 39, 40, 1, 0, 0, [], {}]
-            ]
+                [
+                    26,
+                    52,
+                    52,
+                    0,
+                    0,
+                    0,
+                    [],
+                    {}
+                ],
+                [
+                    19,
+                    50,
+                    58,
+                    0,
+                    0,
+                    0,
+                    [],
+                    {}
+                ],
+                [
+                    512,
+                    50,
+                    44,
+                    2,
+                    0,
+                    0,
+                    [],
+                    {}
+                ],
+                [
+                    512,
+                    50,
+                    42,
+                    0,
+                    0,
+                    0,
+                    [],
+                    {}
+                ],
+                [
+                    516,
+                    51,
+                    44,
+                    1,
+                    0,
+                    0,
+                    [],
+                    {}
+                ],
+                [
+                    516,
+                    51,
+                    42,
+                    0,
+                    0,
+                    0,
+                    [],
+                    {}
+                ],
+                [
+                    1,
+                    44,
+                    50,
+                    0,
+                    0,
+                    0,
+                    [],
+                    {}
+                ],
+                [
+                    1,
+                    44,
+                    52,
+                    0,
+                    0,
+                    0,
+                    [],
+                    {}
+                ],
+                [
+                    19,
+                    45,
+                    50,
+                    0,
+                    0,
+                    0,
+                    [],
+                    {}
+                ],
+                [
+                    19,
+                    45,
+                    51,
+                    0,
+                    0,
+                    0,
+                    [],
+                    {}
+                ],
+                [
+                    19,
+                    45,
+                    52,
+                    0,
+                    0,
+                    0,
+                    [],
+                    {}
+                ],
+                [
+                    19,
+                    45,
+                    53,
+                    0,
+                    0,
+                    0,
+                    [],
+                    {}
+                ],
+                [
+                    19,
+                    45,
+                    54,
+                    0,
+                    0,
+                    0,
+                    [],
+                    {}
+                ],
+                [
+                    19,
+                    44,
+                    54,
+                    0,
+                    0,
+                    0,
+                    [],
+                    {}
+                ],
+                [
+                    19,
+                    43,
+                    54,
+                    0,
+                    0,
+                    0,
+                    [],
+                    {}
+                ],
+                [
+                    29,
+                    51,
+                    47,
+                    0,
+                    0,
+                    0,
+                    [],
+                    {}
+                ],
+                [
+                    29,
+                    59,
+                    49,
+                    0,
+                    0,
+                    0,
+                    [],
+                    {}
+                ],
+                [
+                    525,
+                    40,
+                    40,
+                    0,
+                    0,
+                    0,
+                    [],
+                    {}
+                ],
+                [
+                    525,
+                    39,
+                    40,
+                    1,
+                    0,
+                    0,
+                    [],
+                    {}
+                ]
+            ],
+            "currentQuestVars": [],
+            "numTradesDone": 0,
+            "resourceAlliesMarket": "n",
+            "store": {},
+            "timestampLastTrade": 0,
+            "unlockedEarlyBuildings": [],
+            "warehousedUnits": [],
+            "world_id": 0
         }
     ],
     "privateState": {
@@ -123,6 +322,38 @@
             }
         },
         "survivalVidaTimeStamp": [],
-        "survivalVidasExtra": 0
+        "survivalVidasExtra": 0,
+        "achievedUnits": [],
+        "attacksLost": 0,
+        "attacksPack": 0,
+        "attacksReceived": [],
+        "attacksWon": 0,
+        "collectionsCompleted": [],
+        "comebackBonusCollected": [],
+        "countHack": 0,
+        "deadHeroes": [],
+        "dragonSocialHelp": [],
+        "fakeNeighbors": [],
+        "helpMap": [],
+        "honor": 0,
+        "honorPoints": null,
+        "maps": [
+            {
+                "n": "My Empire",
+                "r": "h",
+                "s": 1
+            }
+        ],
+        "numFriends": 0,
+        "receivedAssists": [],
+        "spyings": [],
+        "spyingsPack": 0,
+        "templeStep": [],
+        "timeStampMondayBonus": 0,
+        "timeStampTemple": 0,
+        "tsAttacksReset": 0,
+        "tsSpyingsReset": 0,
+        "version": 1,
+        "worldChange": 0
     }
 }
