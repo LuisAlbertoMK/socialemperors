@@ -35,7 +35,12 @@ def state(userid):
 
 
 def store_of(userid):
-    return state(userid)["privateState"].get("store")
+    """The warehouse lives in the map, not in privateState.
+
+    The original server's saves carry it as ``map.store``
+    (``villages/quests/100000023.json``), and that is where the client reads it.
+    """
+    return state(userid)["maps"][0].get("store")
 
 
 def put_item_on_map(userid, item_id, x, y, level=0):
@@ -123,4 +128,5 @@ def test_the_warehouse_survives_a_reload(tmp_path, user):
 
     with open(tmp_path / "saves" / f"{user}.save.json", encoding="utf-8") as handle:
         saved = json.load(handle)
-    assert saved["privateState"]["store"] == {"141": 1}
+    assert saved["maps"][0]["store"] == {"141": 1}
+    assert "store" not in saved["privateState"]

@@ -16,15 +16,18 @@ from logger import log
 from sessions import save_session, session, synchronized
 
 
-def _warehouse(save: dict) -> dict:
+def _warehouse(map_state: dict) -> dict:
     """The stored-items map, created on demand.
 
-    The original server kept it as ``privateState.store``, keyed by item id as a
-    string: ``{"141": 1, "57": 1, ...}`` (see villages/quests/100000023.json).
+    It lives in the map, not in privateState: the original server's saves carry it
+    as ``map.store``, keyed by item id as a string, ``{"141": 1, "57": 1, ...}``
+    (see villages/quests/100000023.json), and that is where the client reads it.
+    Some of those saves hold an empty list there instead of a dict, so anything
+    that is not a dict is replaced.
     """
-    store = save["privateState"].get("store")
+    store = map_state.get("store")
     if not isinstance(store, dict):
-        store = save["privateState"]["store"] = {}
+        store = map_state["store"] = {}
     return store
 
 
@@ -311,7 +314,7 @@ def do_command(USERID, cmd, args):
         for idx, item in enumerate(map["items"]):
             if isinstance(item, list) and item[0] == item_id and item[1] == x and item[2] == y:
                 del map["items"][idx]
-                warehouse = _warehouse(save)
+                warehouse = _warehouse(map)
                 warehouse[str(item_id)] = int(warehouse.get(str(item_id), 0)) + 1
                 log("Stored", str(get_name_from_item_id(item_id)), "in the warehouse")
                 break
@@ -321,15 +324,17 @@ def do_command(USERID, cmd, args):
         x = args[1]
         y = args[2]
         town_id = int(args[3])
-        warehouse = _warehouse(save)
+        map = save["maps"][town_id]
+        warehouse = _warehouse(map)
         if int(warehouse.get(str(item_id), 0)) > 0:
             _take_from_warehouse(warehouse, item_id)
-            save["maps"][town_id]["items"] += [[item_id, x, y, 0, timestamp_now(), 0]]
+            map["items"] += [[item_id, x, y, 0, timestamp_now(), 0]]
             log("Placed", str(get_name_from_item_id(item_id)), "from the warehouse")
 
     elif cmd == Constant.CMD_SELL_STORED:
         item_id = int(args[0])
-        warehouse = _warehouse(save)
+        town_id = int(args[1]) if len(args) > 1 else 0
+        warehouse = _warehouse(save["maps"][town_id])
         if int(warehouse.get(str(item_id), 0)) > 0:
             # Only the stored count changes. The client did not say what the sale
             # paid, and inventing a refund would hand out resources for free.
