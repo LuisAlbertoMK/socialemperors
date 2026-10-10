@@ -4,20 +4,15 @@
   Launch Ruffle desktop (nightly) against the local SocialEmperors server.
 
 .USAGE
-  1. Start the server:  python server.py   (from D:\socialemperors)
-  2. Get your USERID:    view-source of /ruffle.html in the browser, search fb_sig_user
-  3. Play (optimal flags from docs/benchmarks/RDD-desktop.md):
-     powershell -ExecutionPolicy Bypass -File tools\play_desktop.ps1 `
-       -RuffleExe "D:\ruffle-desktop\ruffle.exe" -UserId "<tu id>" -Fullscreen
+  Double-click tools\JUGAR.bat, or:
+     powershell -ExecutionPolicy Bypass -File tools\play_desktop.ps1 -Fullscreen
 
-  Optional experiment flags (one at a time): -Graphics dx12|gl|vulkan
-  -Quality low -FrameRate 24. See docs/benchmarks/ODD-bitacora.md for verdicts.
+  Server auto-starts if down; UserId auto-detects your latest save.
+  Optimal flags from docs/benchmarks/RDD-desktop.md.
 #>
 param(
-    [Parameter(Mandatory = $true, HelpMessage = "Ruta a ruffle.exe del nightly desktop")]
-    [string]$RuffleExe,
-    [Parameter(Mandatory = $true, HelpMessage = "Tu USERID (sale en view-source de ruffle.html como fb_sig_user)")]
-    [string]$UserId,
+    [string]$RuffleExe = "D:\ruffle-desktop\ruffle.exe",
+    [string]$UserId = "",
     [string]$ServerIp = "127.0.0.1",
     [int]$Width = 760,
     [int]$Height = 600,
@@ -28,10 +23,35 @@ param(
 )
 
 $base = "http://${ServerIp}:5050"
+
+# 1. Server up? Start it if down.
+$serverOk = $false
+for ($i = 0; $i -lt 5 -and -not $serverOk; $i++) {
+    try { $serverOk = (Invoke-WebRequest -Uri "$base/" -TimeoutSec 3).StatusCode -eq 200 } catch { Start-Sleep 1 }
+}
+if (-not $serverOk) {
+    $repoRoot = Split-Path -Parent $PSScriptRoot
+    Start-Process python -ArgumentList "server.py" -WorkingDirectory $repoRoot
+    for ($i = 0; $i -lt 30 -and -not $serverOk; $i++) {
+        Start-Sleep 1
+        try { $serverOk = (Invoke-WebRequest -Uri "$base/" -TimeoutSec 3).StatusCode -eq 200 } catch { }
+    }
+}
+if (-not $serverOk) { throw "Server did not respond at $base/. Start it manually: python server.py" }
+
+# 2. UserId defaults to the latest save.
+if ([string]::IsNullOrWhiteSpace($UserId)) {
+    $latest = Get-ChildItem (Join-Path (Split-Path -Parent $PSScriptRoot) "saves\*.save.json") |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($null -eq $latest) { throw "No saves found. Pass -UserId explicitly." }
+    $UserId = (Get-Content -Raw $latest.FullName | ConvertFrom-Json).playerInfo.pid
+    Write-Host "Using latest save USERID: $UserId ($($latest.Name))"
+}
 $flash = "$base/default01.static.socialpointgames.com/static/socialempires/flash"
 $movie = "$flash/SELoader.swf?swftoload=$flash/SocialEmpires0926bsec.swf"
 $serverTime = [int][DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 $friendsPic = "$base/img/profile/x.jpg"
+$friendsInfo = '-PfriendsInfo[{"first_name":"AcidCaos","uid":"100000","pic_square":"' + $friendsPic + '"}]'
 
 $extra = @()
 if ($Fullscreen) { $extra += "--fullscreen" }
@@ -51,7 +71,7 @@ if ($FrameRate -gt 0) { $extra += "--frame-rate", "$FrameRate" }
     "-Psex=m" `
     "-PlastLoggedIn=1349266517" `
     "-PdailyBonus=0" `
-    '-PfriendsInfo[{"first_name":"AcidCaos","uid":"100000","pic_square":"' + $friendsPic + '"}]' `
+    $friendsInfo `
     "-PserverTime=$serverTime" `
     "-PforceSyncError=1" `
     "-PforceAttackReload=0" `

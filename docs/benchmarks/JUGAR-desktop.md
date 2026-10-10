@@ -1,17 +1,11 @@
 # Jugar en Ruffle desktop (óptimo medido)
 
-Binarios (fuera del repo, no se commitean): `D:\ruffle-desktop\`
-(`ruffle.exe` nightly 2026-10-09 + `PresentMon.exe` 2.6).
+Doble-click en `tools\JUGAR.bat` y listo: el server se levanta solo si está
+caído y usa tu save más reciente. Binarios (fuera del repo, no se commitean):
+`D:\ruffle-desktop\` (`ruffle.exe` nightly 2026-10-09 + `PresentMon.exe` 2.6).
 
-## Jugar (3 pasos)
-
-1. Server: `python server.py` desde `D:\socialemperors`.
-2. Tu `USERID`: view-source de `/ruffle.html`, buscar `fb_sig_user`.
-3. Lanzar:
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File tools\play_desktop.ps1 `
-     -RuffleExe "D:\ruffle-desktop\ruffle.exe" -UserId "<tu id>" -Fullscreen
-   ```
+Notas: requiere PowerShell 7 (`pwsh`, ya viene con el .bat); el `USERID` se
+puede forzar con `-UserId` si jugás con otro save.
 
 ## Re-medir (mismo protocolo de la bitácora)
 
