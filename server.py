@@ -40,7 +40,7 @@ from flask import (
 )
 
 from bundle import ASSETS_DIR, BASE_DIR, STUB_DIR, TEMPLATES_DIR
-from command import command
+from command import command, do_command
 from constants import Constant
 from engine import timestamp_now
 from logger import capture, log
@@ -396,6 +396,27 @@ def command_response():
     command(USERID, data)
     
     return ({"result": "success"}, 200)
+
+
+@app.route("/mods/collect_all", methods=['POST'])
+def mods_collect_all():
+    """QoL trigger for CMD_MASS_COLLECT for the logged-in player.
+
+    The stock SWF never sends mass_collect, so this companion endpoint lets
+    a web button do in one click what would otherwise be N clicks on N
+    buildings. Same math as CMD_COLLECT per building, no readiness invented.
+    """
+    if 'USERID' not in session:
+        return _json_error("not logged in", status=401)
+    USERID = session['USERID']
+    if USERID not in all_saves_userid():
+        return _json_error(f"unknown USERID: {USERID!r}")
+    town_id = _int_param('town_id', default=0)
+    multiplier = _int_param('multiplier', default=1)
+    from sessions import save_session as _save_session
+    do_command(USERID, Constant.CMD_MASS_COLLECT, [town_id, multiplier])
+    _save_session(USERID)
+    return ({"result": "success", "town_id": town_id}, 200)
 
 @app.route("/dynamic.flash1.dev.socialpoint.es/appsfb/socialempiresdev/srvempires/get_continent_ranking.php")
 def get_continent_ranking_response():

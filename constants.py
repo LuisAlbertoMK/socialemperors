@@ -1564,6 +1564,7 @@ class Constant:
     CMD_KOMPU_HURRY_UP = "kompu_hurry_up"
     CMD_CROSS_PROMOTION_FINISHED = "cross_promotion_finished"
     CMD_GRAVEYARD_BUY_POTIONS = "graveyard_buy_potions"
+    CMD_MASS_COLLECT = "mass_collect"
     SELL_REASON_KILL = "KILL"
     SELL_REASON_CLEAN_BORDER = "CLEAN"
     SELL_REASON_SPAWN_SAVED_QUEST = "SQEST"

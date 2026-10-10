@@ -2,7 +2,13 @@ import json
 import traceback
 
 from constants import Constant
-from engine import apply_collect, apply_collect_xp, apply_cost, timestamp_now
+from engine import (
+    apply_collect,
+    apply_collect_xp,
+    apply_cost,
+    mass_collect_buildings,
+    timestamp_now,
+)
 from get_game_config import (
     get_attribute_from_item_id,
     get_attribute_from_mission_id,
@@ -138,6 +144,20 @@ def do_command(USERID, cmd, args):
         map = save["maps"][town_id]
         apply_collect(save["playerInfo"], map, id, resource_multiplier)
         save["playerInfo"]["cash"] = max(save["playerInfo"]["cash"] - cash_to_substract, 0)
+
+    elif cmd == Constant.CMD_MASS_COLLECT:
+        # QoL mod: one call credits every producing building on the map.
+        # args: [town_id] or [town_id, resource_multiplier]. Same math as
+        # CMD_COLLECT per building, no readiness invented (see engine).
+        town_id = args[0] if len(args) > 0 else 0
+        try:
+            town_id = int(town_id)
+        except (TypeError, ValueError):
+            town_id = 0
+        multiplier = args[1] if len(args) > 1 else 1
+        map = save["maps"][town_id]
+        count = mass_collect_buildings(save["playerInfo"], map, multiplier)
+        log(f"Mass-collected {count} buildings")
     
     elif cmd == Constant.CMD_SELL:
         x = args[0]

@@ -1,3 +1,4 @@
+import contextlib
 import time
 
 from get_game_config import get_item_from_id
@@ -45,6 +46,44 @@ def apply_collect_xp(map: dict, id: int) -> None:
         return
     collect_xp = int(item.get("collect_xp", 0) or 0)
     map["xp"] = map["xp"] + collect_xp
+
+
+def mass_collect_buildings(playerInfo: dict, map: dict, resource_multiplier: int = 1) -> int:
+    """Credit every placed building that produces resources, in one pass.
+
+    This mirrors CMD_COLLECT exactly (same apply_collect, same multiplier),
+    it just loops over the whole map instead of one (x, y). It deliberately
+    does NOT invent readiness: the stock client never sends timestamps the
+    server can trust, and CMD_COLLECT itself applies without a cooldown check,
+    so this has the same exploit surface as clicking every building by hand.
+    It also stamps item[4] with now, so a future cooldown has something to
+    read; the stock collect path leaves that field stale.
+    """
+    try:
+        multiplier = int(resource_multiplier)
+    except (TypeError, ValueError):
+        multiplier = 1
+    if multiplier <= 0:
+        multiplier = 1
+    now = timestamp_now()
+    collected = 0
+    for item in map.get("items", []):
+        if not isinstance(item, list) or len(item) < 1:
+            continue
+        cfg = get_item_from_id(item[0])
+        if not cfg:
+            continue
+        try:
+            if int(cfg.get("collect", 0) or 0) <= 0:
+                continue
+        except (TypeError, ValueError):
+            continue
+        apply_collect(playerInfo, map, item[0], multiplier)
+        if len(item) >= 5:
+            with contextlib.suppress(TypeError, IndexError):
+                item[4] = now
+        collected += 1
+    return collected
 
 def timestamp_now() -> int:
     return int(time.time())
