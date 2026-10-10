@@ -58,6 +58,15 @@ app.secret_key = os.environ.get("SE_SECRET_KEY", "SECRET_KEY")
 # Let the browser cache the (immutable) game assets to cut repeat requests.
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 3600
 
+# The Ruffle player files DO change during development (version bumps, nightly
+# trials), unlike the immutable game assets above. Force revalidation so the
+# browser always serves the current files instead of a stale cached copy.
+@app.after_request
+def _no_cache_ruffle(response):
+    if '/ruffle/' in request.path:
+        response.headers['Cache-Control'] = 'no-cache'
+    return response
+
 def _server_ip() -> str:
     # Use the host the client actually connected to, so devices on the LAN
     # get the PC's LAN IP instead of 127.0.0.1 (which would point to themselves).

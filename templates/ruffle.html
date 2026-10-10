@@ -93,7 +93,31 @@
         <!-- EMBED GAME -->
         <object>
             <div id='ruffle'></div>
+            <div id='ruffle-status' style='width:760px;font-size:10pt;color:#333'></div>
             <script>
+                function ruffleStatus(message, isError) {
+                    var el = document.getElementById("ruffle-status");
+                    el.textContent = message;
+                    if (isError) { el.style.color = "red"; el.style.fontWeight = "bold"; }
+                }
+                // No-pause mod: keep the game logic running when the tab loses
+                // focus. Ruffle pauses on hidden tabs with
+                // backgroundExecutionMode "none"; "mainThread" keeps it alive
+                // at the cost of some background CPU. Set both the global
+                // default and the per-player option so an older bundled
+                // ruffle.js that ignores one still honors the other.
+                window.RufflePlayer = window.RufflePlayer || {};
+                window.RufflePlayer.config = Object.assign(
+                    {}, window.RufflePlayer.config || {},
+                    { backgroundExecutionMode: "mainThread", autoplay: true }
+                );
+                try {
+                    var ruffleVersion = (window.RufflePlayer.newest && window.RufflePlayer.newest().version) || "unknown";
+                    ruffleStatus("Ruffle " + ruffleVersion + " loading {{GAMEVERSION}} ...");
+                } catch (error) {
+                    ruffleStatus("Ruffle failed to start (ruffle.js did not load, local copy and CDN both failed): " + error, true);
+                    throw error;
+                }
                 var ruffle = window.RufflePlayer.newest(),
                 player = Object.assign(document.getElementById("ruffle").appendChild(ruffle.createPlayer()), {
                     width: 760,
@@ -105,6 +129,7 @@
                     backgroundColor: "#669C2C",
                     allowScriptAccess: false,
                     autoplay: true,
+                    backgroundExecutionMode: "mainThread",
                     parameters: '\
                         spdebug=notnull&brk=0\
                         &staticUrl=http://{{SERVERIP}}:5050/default01.static.socialpointgames.com/static/socialempires/&brk=0\
@@ -122,6 +147,10 @@
                         &forceSyncError=1&brk=0\
                         &forceAttackReload=0&brk=0\
                         &forceQuestReload=0&brk=0'
+                }).then(function () {
+                    ruffleStatus("Ruffle " + ruffleVersion + " running {{GAMEVERSION}}.");
+                }).catch(function (error) {
+                    ruffleStatus("Ruffle could not load the game (SWF missing or blocked): " + error, true);
                 });
             </script>
         </object>
