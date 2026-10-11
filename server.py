@@ -104,6 +104,14 @@ def _json_error(reason: str, status: int = 400):
     )
 
 
+# Paths whose CDN fetch recently failed (path -> timestamp_now() of the failure).
+# The original CDN is long dead, so retrying every miss would handshake a dead
+# host on hot paths (e.g. a missing effect requested on every cast). Skip the
+# refetch for a while; a restart clears it. TTL is generous on purpose.
+_download_miss: dict = {}
+_DOWNLOAD_MISS_TTL = 3600
+
+
 def _download_asset(url: str, destination: str) -> bool:
     """Fetch one missing asset from the original CDN. True when it was stored.
 
@@ -240,10 +248,17 @@ def static_assets_loader(path):
         log(f"====== USING EXTERNAL: download_assets/assets/{path}")
         return send_from_directory(download_dir, path)
 
-    # Neither bundled nor cached: fetch it from the original CDN.
+    # Neither bundled nor cached: fetch it from the original CDN, unless a
+    # recent attempt already failed (see _download_miss).
+    now = timestamp_now()
+    last_miss = _download_miss.get(path)
+    if last_miss is not None and now - last_miss < _DOWNLOAD_MISS_TTL:
+        return ("", 404)
     URL = f"https://static.socialpointgames.com/static/socialempires/assets/{path}"
     if not _download_asset(URL, cached_path):
+        _download_miss[path] = now
         return ("", 404)
+    _download_miss.pop(path, None)
 
     log(f"====== DOWNLOADED ASSET: {URL}")
     return send_from_directory(download_dir, path)

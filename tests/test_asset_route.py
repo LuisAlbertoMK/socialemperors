@@ -121,8 +121,7 @@ def test_cdn_http_errors_are_also_a_404(client, tmp_path, monkeypatch):
     assert response.status_code == 404
 
 
-def test_a_failed_download_never_leaves_a_partial_asset_behind(
-    client, tmp_path, monkeypatch
+def test_a_failed_download_never_leaves_a_partial_asset_behind(    client, tmp_path, monkeypatch
 ):
     """A half-written asset would later be served from cache as a corrupt file."""
     monkeypatch.setattr(server, "ASSETS_DIR", str(tmp_path / "empty-assets"))
@@ -148,3 +147,30 @@ def test_a_failed_download_never_leaves_a_partial_asset_behind(
 
     assert response.status_code == 404
     assert not (tmp_path / "download_assets" / "assets" / "units" / "broken.swf").exists()
+
+
+def test_repeated_miss_does_not_hit_the_dead_cdn_again(client, tmp_path, monkeypatch):
+    """A missing asset (e.g. an effect requested on every cast) must not
+    handshake a dead host on every request: one failed fetch suppresses
+    refetches for a while, both responses are still 404."""
+    monkeypatch.setattr(server, "ASSETS_DIR", str(tmp_path / "empty-assets"))
+    monkeypatch.setattr(server, "BASE_DIR", str(tmp_path))
+    server._download_miss.clear()
+    calls = []
+
+    def offline(url, timeout=None):
+        calls.append(url)
+        raise urllib.error.URLError("no network")
+
+    monkeypatch.setattr(urllib.request, "urlopen", offline)
+
+    first = client.get(
+        "/default01.static.socialpointgames.com/static/socialempires/fx/retry.swf"
+    )
+    second = client.get(
+        "/default01.static.socialpointgames.com/static/socialempires/fx/retry.swf"
+    )
+
+    assert first.status_code == 404
+    assert second.status_code == 404
+    assert len(calls) == 1
