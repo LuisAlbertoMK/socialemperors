@@ -19,3 +19,10 @@ D:\ruffle-desktop\PresentMon.exe --process_name ruffle.exe `
 
 Analizar: `python tools/bench_presentmon.py bench.csv`.
 Veredictos vigentes en `ODD-bitacora.md` y `RDD-desktop.md`.
+
+## Fullscreen y UI (verificado 2026-10-15)
+
+El juego oculta su UI (barra superior, BUILD, aliados) en cualquier viewport
+distinto de 760x600 exacto, incluso con `--scale show-all --force-scale`.
+Por eso `JUGAR.bat` corre en ventana exacta por defecto: es el único modo con
+la UI visible. Fullscreen solo sirve para medir PresentMon, no para jugar.

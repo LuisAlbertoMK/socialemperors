@@ -19,9 +19,10 @@ param(
     [switch]$Fullscreen,
     [string]$Graphics = "",
     [string]$Quality = "",
-    [double]$FrameRate = 0
+    [double]$FrameRate = 0,
+    [string]$Scale = "",
+    [switch]$ForceScale
 )
-
 $base = "http://${ServerIp}:5050"
 
 # 1. Server up? Start it if down.
@@ -58,6 +59,8 @@ if ($Fullscreen) { $extra += "--fullscreen" }
 if ($Graphics -ne "") { $extra += "--graphics", $Graphics }
 if ($Quality -ne "") { $extra += "--quality", $Quality }
 if ($FrameRate -gt 0) { $extra += "--frame-rate", "$FrameRate" }
+if ($Scale -ne "") { $extra += "--scale", $Scale }
+if ($ForceScale) { $extra += "--force-scale" }
 
 & $RuffleExe $movie --width $Width --height $Height @extra `
     "-Pspdebug=notnull" `
