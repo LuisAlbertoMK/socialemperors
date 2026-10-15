@@ -14,9 +14,37 @@ from bundle import SAVES_DIR, VILLAGES_DIR
 from constants import Constant
 from engine import timestamp_now
 from logger import log
+from version import migrate_loaded_save, version_code
+
+try:
+    import orjson
+
+    _HAS_ORJSON = True
+except ImportError:  # local fallback without the native dependency
+    orjson = None
+    _HAS_ORJSON = False
+
+
+def _pretty_save_enabled() -> bool:
+    return os.environ.get("SE_PRETTY_SAVE", "0") not in ("", "0", "false", "False")
+
+
+def _dumps_village(village: dict) -> bytes:
+    if _HAS_ORJSON and not _pretty_save_enabled():
+        return orjson.dumps(village)
+    indent = 4 if _pretty_save_enabled() else None
+    return json.dumps(village, indent=indent).encode("utf-8")
+
+
+def _loads_json_bytes(data: bytes):
+    if _HAS_ORJSON:
+        try:
+            return orjson.loads(data)
+        except orjson.JSONDecodeError:
+            pass
+    return json.loads(data.decode("utf-8"))
 
 # from flask_session import SqlAlchemySessionInterface, current_app
-from version import migrate_loaded_save, version_code
 
 __villages = {}  # ALL static neighbors
 '''__villages = {
@@ -58,8 +86,8 @@ def synchronized(function):
     return wrapper
 
 
-with open(os.path.join(VILLAGES_DIR, "initial.json"), encoding="utf-8") as f:
-    __initial_village = json.load(f)
+with open(os.path.join(VILLAGES_DIR, "initial.json"), "rb") as f:
+    __initial_village = _loads_json_bytes(f.read())
 
 # Load saved villages
 
@@ -99,8 +127,8 @@ def load_saved_villages():
         if file == "initial.json" or not file.endswith(".json"):
             continue
         print(f" * Loading static neighbour {file}... ", end='')
-        with open(os.path.join(VILLAGES_DIR, file), encoding="utf-8") as vf:
-            village = json.load(vf)
+        with open(os.path.join(VILLAGES_DIR, file), "rb") as vf:
+            village = _loads_json_bytes(vf.read())
         if not is_valid_village(village):
             print("Invalid neighbour")
             continue
@@ -116,9 +144,9 @@ def load_saved_villages():
             continue
         print(f" * Loading save at {file}... ", end='')
         try:
-            with open(os.path.join(SAVES_DIR, file), encoding="utf-8") as sf:
-                save = json.load(sf)
-        except json.decoder.JSONDecodeError as error:
+            with open(os.path.join(SAVES_DIR, file), "rb") as sf:
+                save = _loads_json_bytes(sf.read())
+        except (ValueError, UnicodeDecodeError) as error:
             print(f"Corrupted JSON: {error}")
             continue
         if not is_valid_village(save):
@@ -312,8 +340,10 @@ def save_session(USERID: str):
     # file that another writer still holds.
     tmp_path = f"{final_path}.{os.getpid()}.{threading.get_ident()}.tmp"
     try:
-        with open(tmp_path, 'w', encoding="utf-8") as f:
-            json.dump(village, f, indent=4)
+        # Compact binary write (orjson 5-10x faster than indent=4). The file
+        # stays valid JSON UTF-8, so old pretty saves still load.
+        with open(tmp_path, 'wb') as f:
+            f.write(_dumps_village(village))
         os.replace(tmp_path, final_path)
     except BaseException:
         # Never leave a partial temp file behind.

@@ -4,7 +4,7 @@
 a read-modify-write over the very dictionaries that ``save_session`` serializes.
 Two things must therefore hold:
 
-1. A save in progress must exclude concurrent mutation, otherwise ``json.dump``
+1. A save in progress must exclude concurrent mutation, otherwise serialization
    can raise ``RuntimeError: dictionary changed size during iteration`` or write
    a half-applied village.
 2. Concurrent command batches on the same village must not corrupt the save.
@@ -45,28 +45,29 @@ COMMAND_URL = (
 def test_command_waits_for_an_in_progress_save(monkeypatch, user):
     """A mutator must not enter the state while a save is serializing it.
 
-    ``json.dump`` is blocked on purpose so the two threads are guaranteed to
-    overlap; the mutator is only allowed through once the dump is released.
+    Serialization (orjson compact by default) is blocked on purpose so the
+    two threads are guaranteed to overlap; the mutator is only allowed
+    through once the dump is released.
     """
     dump_entered = threading.Event()
     release_dump = threading.Event()
     mutation_finished = threading.Event()
     errors = []
-    real_dump = json.dump
+    real_dumps = sessions._dumps_village
     calls = {"count": 0}
 
-    def blocking_dump(obj, file, **kwargs):
+    def blocking_dumps(village):
         calls["count"] += 1
         if calls["count"] == 1:
             dump_entered.set()
             release_dump.wait(timeout=10)
-        return real_dump(obj, file, **kwargs)
+        return real_dumps(village)
 
-    monkeypatch.setattr(sessions.json, "dump", blocking_dump)
+    monkeypatch.setattr(sessions, "_dumps_village", blocking_dumps)
 
     saver = threading.Thread(target=sessions.save_session, args=(user,))
     saver.start()
-    assert dump_entered.wait(timeout=10), "save never reached json.dump"
+    assert dump_entered.wait(timeout=10), "save never reached serialization"
 
     def mutate():
         try:

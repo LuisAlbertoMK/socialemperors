@@ -18,8 +18,139 @@ from get_game_config import (
     get_name_from_item_id,
     get_xp_from_level,
 )
-from logger import log
+from logger import VERBOSE, log
 from sessions import save_session, session, synchronized
+
+
+def _label_item(item_id) -> str:
+    """Human-readable item label for logs only; free when VERBOSE is off."""
+    if not VERBOSE:
+        return ""
+    name = get_name_from_item_id(item_id)
+    return str(name) if name is not None else str(item_id)
+
+
+def _label_mission(mission_id) -> str:
+    if not VERBOSE:
+        return ""
+    title = get_attribute_from_mission_id(mission_id, "title")
+    return str(title) if title is not None else str(mission_id)
+
+
+# Ephemeral per-batch item index: O(1) lookups within one command() batch.
+# The save format stays a plain list (the client reads it); the index is only
+# an accelerator that is verified before use and falls back to a full scan,
+# so a stale index can never break the game, only cost one rebuild.
+_batch_indexes = None
+
+
+def _index_key(USERID, town_id):
+    return (str(USERID), town_id)
+
+
+def _ensure_batch_index(USERID, town_id, map_state):
+    global _batch_indexes
+    if _batch_indexes is None:
+        return None
+    key = _index_key(USERID, town_id)
+    items = map_state.get("items")
+    if not isinstance(items, list):
+        return None
+    entry = _batch_indexes.get(key)
+    if entry is not None and entry.get("items") is items:
+        return entry
+    by_id_xyz = {}
+    by_xy = {}
+    for idx, item in enumerate(items):
+        try:
+            iid, ix, iy = item[0], item[1], item[2]
+        except (IndexError, TypeError):
+            continue
+        if (iid, ix, iy) not in by_id_xyz:
+            by_id_xyz[(iid, ix, iy)] = idx
+        if (ix, iy) not in by_xy:
+            by_xy[(ix, iy)] = idx
+    entry = {"by_id_xyz": by_id_xyz, "by_xy": by_xy, "items": items}
+    _batch_indexes[key] = entry
+    return entry
+
+
+def _index_invalidate(USERID, town_id):
+    global _batch_indexes
+    if _batch_indexes is None:
+        return
+    _batch_indexes.pop(_index_key(USERID, town_id), None)
+
+
+def _scan_idx(items, iid, x, y):
+    for idx, item in enumerate(items):
+        try:
+            if item[0] == iid and item[1] == x and item[2] == y:
+                return idx
+        except (IndexError, TypeError):
+            continue
+    return None
+
+
+def _scan_xy(items, x, y):
+    for idx, item in enumerate(items):
+        try:
+            if item[1] == x and item[2] == y:
+                return idx
+        except (IndexError, TypeError):
+            continue
+    return None
+
+
+def _find_idx(USERID, town_id, map_state, iid, x, y):
+    items = map_state.get("items")
+    if not isinstance(items, list):
+        return None
+    entry = _ensure_batch_index(USERID, town_id, map_state)
+    if entry is not None:
+        idx = entry["by_id_xyz"].get((iid, x, y))
+        if idx is not None and 0 <= idx < len(items):
+            item = items[idx]
+            try:
+                if item[0] == iid and item[1] == x and item[2] == y:
+                    return idx
+            except (IndexError, TypeError):
+                pass
+    return _scan_idx(items, iid, x, y)
+
+
+def _find_xy(USERID, town_id, map_state, x, y):
+    items = map_state.get("items")
+    if not isinstance(items, list):
+        return None
+    entry = _ensure_batch_index(USERID, town_id, map_state)
+    if entry is not None:
+        idx = entry["by_xy"].get((x, y))
+        if idx is not None and 0 <= idx < len(items):
+            item = items[idx]
+            try:
+                if item[1] == x and item[2] == y:
+                    return idx
+            except (IndexError, TypeError):
+                pass
+    return _scan_xy(items, x, y)
+
+
+def _index_note_move(USERID, town_id, map_state, old_xyz, old_xy, new_xyz, new_xy, idx):
+    global _batch_indexes
+    if _batch_indexes is None:
+        return
+    entry = _batch_indexes.get(_index_key(USERID, town_id))
+    if entry is None or entry.get("items") is not map_state.get("items"):
+        return
+    by_id_xyz = entry["by_id_xyz"]
+    by_xy = entry["by_xy"]
+    if by_id_xyz.get(old_xyz) == idx:
+        del by_id_xyz[old_xyz]
+        by_id_xyz.setdefault(new_xyz, idx)
+    if by_xy.get(old_xy) == idx:
+        del by_xy[old_xy]
+        by_xy.setdefault(new_xy, idx)
 
 
 def _warehouse(map_state: dict) -> dict:
@@ -66,18 +197,23 @@ def command(USERID, data):
     publishActions = data["publishActions"]
     commands = data["commands"]
 
-    for position, comm in enumerate(commands):
-        try:
-            cmd = comm["cmd"]
-            args = comm["args"]
-            do_command(USERID, cmd, args)
-        except (IndexError, KeyError, TypeError, ValueError) as error:
-            # A command with the wrong argument shape must not abort the whole
-            # frame: the client already applied the rest of it locally, so a
-            # failed request desyncs it further. Contain it, log it, continue.
-            # Rare enough to print even with request logging off.
-            print(f"[WARN] command #{position} {comm!r} rejected: {error!r}")
-            log(traceback.format_exc())
+    global _batch_indexes
+    _batch_indexes = {}
+    try:
+        for position, comm in enumerate(commands):
+            try:
+                cmd = comm["cmd"]
+                args = comm["args"]
+                do_command(USERID, cmd, args)
+            except (IndexError, KeyError, TypeError, ValueError) as error:
+                # A command with the wrong argument shape must not abort the whole
+                # frame: the client already applied the rest of it locally, so a
+                # failed request desyncs it further. Contain it, log it, continue.
+                # Rare enough to print even with request logging off.
+                print(f"[WARN] command #{position} {comm!r} rejected: {error!r}")
+                log(traceback.format_exc())
+    finally:
+        _batch_indexes = None
     save_session(USERID) # Save session
 
 def do_command(USERID, cmd, args):
@@ -96,7 +232,7 @@ def do_command(USERID, cmd, args):
         bool_dont_modify_resources = bool(args[5]) # 1 if the game "buys" for you, so does not substract whatever the item cost is.
         price_multiplier = args[6]
         type = args[7]
-        log("Add", str(get_name_from_item_id(id)), "at", f"({x},{y})")
+        log("Add", _label_item(id), "at", f"({x},{y})")
         collected_at_timestamp = timestamp_now()
         level = 0 # TODO 
         orientation = 0
@@ -106,6 +242,7 @@ def do_command(USERID, cmd, args):
             xp = int(get_attribute_from_item_id(id, "xp"))
             map["xp"] = map["xp"] + xp
         map["items"] += [[id, x, y, orientation, collected_at_timestamp, level]]
+        _index_invalidate(USERID, town_id)
     
     elif cmd == Constant.CMD_COMPLETE_TUTORIAL:
         tutorial_step = args[0]
@@ -124,13 +261,17 @@ def do_command(USERID, cmd, args):
         frame = args[5]
         town_id = args[6]
         reason = args[7] # "Unitat", "moveTo", "colisio", "MouseUsed"
-        log("Move", str(get_name_from_item_id(id)), "from", f"({ix},{iy})", "to", f"({newx},{newy})")
+        log("Move", _label_item(id), "from", f"({ix},{iy})", "to", f"({newx},{newy})")
         map = save["maps"][town_id]
-        for item in map["items"]:
-            if item[0] == id and item[1] == ix and item[2] == iy:
-                item[1] = newx
-                item[2] = newy
-                break
+        idx = _find_idx(USERID, town_id, map, id, ix, iy)
+        if idx is not None:
+            item = map["items"][idx]
+            _index_note_move(
+                USERID, town_id, map,
+                (id, ix, iy), (ix, iy), (id, newx, newy), (newx, newy), idx,
+            )
+            item[1] = newx
+            item[2] = newy
     
     elif cmd == Constant.CMD_COLLECT:
         x = args[0]
@@ -140,7 +281,7 @@ def do_command(USERID, cmd, args):
         num_units_contained_when_harvested = args[4]#TODO does this affect multiplier?
         resource_multiplier = args[5]
         cash_to_substract = args[6]
-        log("Collect", str(get_name_from_item_id(id)))
+        log("Collect", _label_item(id))
         map = save["maps"][town_id]
         apply_collect(save["playerInfo"], map, id, resource_multiplier)
         save["playerInfo"]["cash"] = max(save["playerInfo"]["cash"] - cash_to_substract, 0)
@@ -166,12 +307,12 @@ def do_command(USERID, cmd, args):
         town_id = args[3]
         bool_dont_modify_resources = args[4]
         reason = args[5]
-        log("Remove", str(get_name_from_item_id(id)), "from", f"({x},{y}). Reason: {reason}")
+        log("Remove", _label_item(id), "from", f"({x},{y}). Reason: {reason}")
         map = save["maps"][town_id]
-        for idx, item in enumerate(map["items"]):
-            if item[0] == id and item[1] == x and item[2] == y:
-                del map["items"][idx]
-                break
+        idx = _find_idx(USERID, town_id, map, id, x, y)
+        if idx is not None:
+            del map["items"][idx]
+            _index_invalidate(USERID, town_id)
         if not bool_dont_modify_resources:
             price_multiplier = -0.05
             if get_attribute_from_item_id(id, "cost_type") != "c":
@@ -185,18 +326,18 @@ def do_command(USERID, cmd, args):
         id = args[2]
         town_id = args[3]
         type = args[4]
-        log("Kill", str(get_name_from_item_id(id)), "from", f"({x},{y}).")
+        log("Kill", _label_item(id), "from", f"({x},{y}).")
         map = save["maps"][town_id]
-        for idx, item in enumerate(map["items"]):
-            if item[0] == id and item[1] == x and item[2] == y:
-                apply_collect_xp(map, id)
-                del map["items"][idx]
-                break
+        idx = _find_idx(USERID, town_id, map, id, x, y)
+        if idx is not None:
+            apply_collect_xp(map, id)
+            del map["items"][idx]
+            _index_invalidate(USERID, town_id)
     
     elif cmd == Constant.CMD_COMPLETE_MISSION:
         mission_id = args[0]
         skipped_with_cash = bool(args[1])
-        log("Complete mission", mission_id, ":", str(get_attribute_from_mission_id(mission_id, "title")))
+        log("Complete mission", mission_id, ":", _label_mission(mission_id))
         if skipped_with_cash:
             cash_to_substract = 0 # TODO 
             save["playerInfo"]["cash"] = max(save["playerInfo"]["cash"] - cash_to_substract, 0)
@@ -205,7 +346,7 @@ def do_command(USERID, cmd, args):
     elif cmd == Constant.CMD_REWARD_MISSION:
         town_id = args[0]
         mission_id = args[1]
-        log("Reward mission", mission_id, ":", str(get_attribute_from_mission_id(mission_id, "title")))
+        log("Reward mission", mission_id, ":", _label_mission(mission_id))
         reward = int(get_attribute_from_mission_id(mission_id, "reward")) # gold
         save["maps"][town_id]["coins"] += reward   
         save["privateState"]["rewardedMissions"] += [mission_id]
@@ -217,20 +358,20 @@ def do_command(USERID, cmd, args):
         b_x = args[3]
         b_y = args[4]
         town_id = args[5]
-        log("Push", str(get_name_from_item_id(unit_id)), "to", f"({b_x},{b_y}).")
+        log("Push", _label_item(unit_id), "to", f"({b_x},{b_y}).")
         map = save["maps"][town_id]
         # Unit into building
-        for item in map["items"]:
-            if item[1] == b_x and item[2] == b_y:
-                if len(item) < 7:
-                    item += [[]]
-                item[6] += [unit_id]
-                break
+        b_idx = _find_xy(USERID, town_id, map, b_x, b_y)
+        if b_idx is not None:
+            item = map["items"][b_idx]
+            if len(item) < 7:
+                item += [[]]
+            item[6] += [unit_id]
         # Remove unit
-        for idx, item in enumerate(map["items"]):
-            if item[0] == unit_id and item[1] == unit_x and item[2] == unit_y:
-                del map["items"][idx]
-                break
+        u_idx = _find_idx(USERID, town_id, map, unit_id, unit_x, unit_y)
+        if u_idx is not None:
+            del map["items"][u_idx]
+            _index_invalidate(USERID, town_id)
     
     elif cmd == Constant.CMD_POP_UNIT:
         b_x = args[0]
@@ -242,21 +383,21 @@ def do_command(USERID, cmd, args):
             unit_x = args[4]
             unit_y = args[5]
             unit_frame = args[6] # unknown use
-        log("Pop", str(get_name_from_item_id(unit_id)), "from", f"({b_x},{b_y}).")
+        log("Pop", _label_item(unit_id), "from", f"({b_x},{b_y}).")
         map = save["maps"][town_id]
         # Remove unit from building
-        for item in map["items"]:
-            if item[1] == b_x and item[2] == b_y:
-                if len(item) < 7:
-                    break
+        b_idx = _find_xy(USERID, town_id, map, b_x, b_y)
+        if b_idx is not None:
+            item = map["items"][b_idx]
+            if len(item) >= 7:
                 item[6].remove(unit_id)
-                break
         if place_popped_unit:
             # Spawn unit outside
             collected_at_timestamp = timestamp_now()
             level = 0 # TODO 
             orientation = 0
             map["items"] += [[unit_id, unit_x, unit_y, orientation, collected_at_timestamp, level]]
+            _index_invalidate(USERID, town_id)
     
     elif cmd == Constant.CMD_RT_LEVEL_UP:
         new_level = args[0]
@@ -311,12 +452,12 @@ def do_command(USERID, cmd, args):
         y = args[1]
         town_id = int(args[2])
         item_id = args[3]
-        log("Store", str(get_name_from_item_id(item_id)), "from", f"({x},{y})")
+        log("Store", _label_item(item_id), "from", f"({x},{y})")
         map = save["maps"][town_id]
-        for idx, item in enumerate(map["items"]):
-            if item[0] == item_id and item[1] == x and item[2] == y:
-                del map["items"][idx]
-                break
+        idx = _find_idx(USERID, town_id, map, item_id, x, y)
+        if idx is not None:
+            del map["items"][idx]
+            _index_invalidate(USERID, town_id)
         length = len(save["privateState"]["gifts"])
         if length <= item_id:
             save["privateState"]["gifts"].extend([0] * (item_id - length + 1))
@@ -331,13 +472,15 @@ def do_command(USERID, cmd, args):
         town_id = int(args[2])
         item_id = int(args[3])
         map = save["maps"][town_id]
-        for idx, item in enumerate(map["items"]):
-            if isinstance(item, list) and item[0] == item_id and item[1] == x and item[2] == y:
+        idx = _find_idx(USERID, town_id, map, item_id, x, y)
+        if idx is not None:
+            item = map["items"][idx]
+            if isinstance(item, list):
                 del map["items"][idx]
+                _index_invalidate(USERID, town_id)
                 warehouse = _warehouse(map)
                 warehouse[str(item_id)] = int(warehouse.get(str(item_id), 0)) + 1
-                log("Stored", str(get_name_from_item_id(item_id)), "in the warehouse")
-                break
+                log("Stored", _label_item(item_id), "in the warehouse")
 
     elif cmd == Constant.CMD_PLACE_STORED_ITEM:
         item_id = int(args[0])
@@ -349,7 +492,8 @@ def do_command(USERID, cmd, args):
         if int(warehouse.get(str(item_id), 0)) > 0:
             _take_from_warehouse(warehouse, item_id)
             map["items"] += [[item_id, x, y, 0, timestamp_now(), 0]]
-            log("Placed", str(get_name_from_item_id(item_id)), "from the warehouse")
+            _index_invalidate(USERID, town_id)
+            log("Placed", _label_item(item_id), "from the warehouse")
 
     elif cmd == Constant.CMD_SELL_STORED:
         item_id = int(args[0])
@@ -359,7 +503,7 @@ def do_command(USERID, cmd, args):
             # Only the stored count changes. The client did not say what the sale
             # paid, and inventing a refund would hand out resources for free.
             _take_from_warehouse(warehouse, item_id)
-            log("Sold", str(get_name_from_item_id(item_id)), "from the warehouse")
+            log("Sold", _label_item(item_id), "from the warehouse")
 
     elif cmd == Constant.CMD_PLACE_GIFT:
         item_id = args[0]
@@ -367,12 +511,13 @@ def do_command(USERID, cmd, args):
         y = args[2]
         town_id = args[3]#unsure, both 3 and 4 seem to stay 0
         args[4]#unknown yet
-        log("Add", str(get_name_from_item_id(item_id)), "at", f"({x},{y})")
+        log("Add", _label_item(item_id), "at", f"({x},{y})")
         items = save["maps"][town_id]["items"]
         orientation = 0#TODO
         collected_at_timestamp = timestamp_now()
         level = 0
         items += [[item_id, x, y, orientation, collected_at_timestamp, level]]#maybe make function for adding items
+        _index_invalidate(USERID, town_id)
         save["privateState"]["gifts"][item_id] -= 1
         if save["privateState"]["gifts"][item_id] == 0: #removes excess zeros at end if necessary
             while(save["privateState"]["gifts"][-1] == 0):
@@ -381,7 +526,7 @@ def do_command(USERID, cmd, args):
     elif cmd == Constant.CMD_SELL_GIFT:
         item_id = args[0]
         town_id = args[1]
-        log("Gift", str(get_name_from_item_id(item_id)), "sold on town:",town_id)
+        log("Gift", _label_item(item_id), "sold on town:",town_id)
         gifts = save["privateState"]["gifts"]
         gifts[item_id] -= 1
         if gifts[item_id] == 0: #removes excess zeros at end if necessary
@@ -462,10 +607,10 @@ def do_command(USERID, cmd, args):
         town_id = args[3]
         log("Item at", f"({x},{y})", "changed to orientation", new_orientation)
         map = save["maps"][town_id]
-        for item in map["items"]:
-            if item[1] == x and item[2] == y:
-                item[3] = new_orientation
-                break
+        idx = _find_xy(USERID, town_id, map, x, y)
+        if idx is not None:
+            # Keys (id,x,y) unchanged: index stays valid, no invalidate needed.
+            map["items"][idx][3] = new_orientation
     
     elif cmd == Constant.CMD_MONSTER_BUY_STEP_CASH:
         price = args[0]
@@ -562,7 +707,7 @@ def do_command(USERID, cmd, args):
         y = args[2]
         town_id = args[3]
         bool_used_potion = len(args) > 4 and args[4] == '1'
-        log("Resurrect", str(get_name_from_item_id(unit_id)), "from graveyard")
+        log("Resurrect", _label_item(unit_id), "from graveyard")
         # pay
         if bool_used_potion:
             quantity = 1
@@ -575,6 +720,7 @@ def do_command(USERID, cmd, args):
         orientation = 0
         map = save["maps"][town_id]
         map["items"] += [[unit_id, x, y, orientation, collected_at_timestamp, level]]
+        _index_invalidate(USERID, town_id)
 
     elif cmd == Constant.CMD_BUY_SUPER_OFFER_PACK:
         town_id = args[0]
