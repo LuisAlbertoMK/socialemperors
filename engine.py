@@ -21,6 +21,31 @@ def apply_cost(playerInfo: dict, map: dict, id: int, price_multiplier: int) -> N
     elif cost_type == "f":
         map["food"] = max(map["food"] - cost, 0)
 
+def can_afford(playerInfo: dict, map: dict, id: int, price_multiplier: int) -> bool:
+    """True when the balances cover the full price (refunds always pass).
+
+    ``apply_cost`` clamps at zero, so without this check a forged client can
+    buy anything for free. Callers must reject (not clamp) when this is False.
+    """
+    item = get_item_from_id(id)
+    if not item:
+        return False
+    cost = int(price_multiplier * int(item.get("cost", 0) or 0))
+    if cost <= 0:
+        return True
+    cost_type = item.get("cost_type")
+    if cost_type == "w":
+        return map.get("wood", 0) >= cost
+    elif cost_type == "g":
+        return map.get("coins", 0) >= cost
+    elif cost_type == "c":
+        return playerInfo.get("cash", 0) >= cost
+    elif cost_type == "s":
+        return map.get("stone", 0) >= cost
+    elif cost_type == "f":
+        return map.get("food", 0) >= cost
+    return False
+
 def apply_collect(playerInfo: dict, map: dict, id: int, resource_multiplier: int) -> None:
     item = get_item_from_id(id)
     if not item:

@@ -6,6 +6,7 @@ from engine import (
     apply_collect,
     apply_collect_xp,
     apply_cost,
+    can_afford,
     mass_collect_buildings,
     timestamp_now,
 )
@@ -231,6 +232,9 @@ def _handle_buy(USERID, save, args):
     orientation = 0
     map = save["maps"][town_id]
     if not bool_dont_modify_resources:
+        if not can_afford(save["playerInfo"], map, id, price_multiplier):
+            log("Rejected buy: insufficient funds for", _label_item(id))
+            return True
         apply_cost(save["playerInfo"], map, id, price_multiplier)
         xp = int(get_attribute_from_item_id(id, "xp"))
         map["xp"] = map["xp"] + xp
@@ -434,9 +438,15 @@ def _handle_expand(USERID, save, args):
     exp = expansion_prices[len(map["expansions"]) - 1]
     if resource == "gold":
         to_substract = exp["coins"]
+        if save["maps"][town_id]["coins"] < to_substract:
+            log("Rejected expansion: insufficient coins")
+            return True
         save["maps"][town_id]["coins"] = max(save["maps"][town_id]["coins"] - to_substract, 0)
     elif resource == "cash":
         to_substract = exp["cash"]
+        if save["playerInfo"]["cash"] < to_substract:
+            log("Rejected expansion: insufficient cash")
+            return True
         save["playerInfo"]["cash"] = max(save["playerInfo"]["cash"] - to_substract, 0)
     # Add expansion
     map["expansions"].append(land_id)
@@ -452,6 +462,9 @@ def _handle_name_map(USERID, save, args):
 def _handle_exchange_cash(USERID, save, args):
     town_id = args[0]
     log("Exchange cash -> coins.")
+    if save["playerInfo"]["cash"] < 5:
+        log("Rejected exchange: insufficient cash")
+        return True
     save["playerInfo"]["cash"] = max(save["playerInfo"]["cash"] - 5, 0)#maybe make function for editing resources
     save["maps"][town_id]["coins"] += 2500
     return False

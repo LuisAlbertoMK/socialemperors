@@ -3,6 +3,7 @@ import contextlib
 import gzip
 import json
 import os
+import time as _time
 
 if os.name == 'nt':
     os.system("color")
@@ -53,8 +54,14 @@ port = 5050
 app = Flask(__name__, template_folder=TEMPLATES_DIR)
 # Session signing key, available outside __main__ so `flask run` and the test
 # client can use session-backed routes. Override with SE_SECRET_KEY for anything
-# that is not a single-player local install.
-app.secret_key = os.environ.get("SE_SECRET_KEY", "SECRET_KEY")
+# that is not a single-player local install: without it every restart mints a
+# random key (old login cookies stop working) instead of sharing one public key.
+if os.environ.get("SE_SECRET_KEY"):
+    app.secret_key = os.environ["SE_SECRET_KEY"]
+else:
+    import secrets
+    app.secret_key = secrets.token_hex(32)
+    print("[WARN] SE_SECRET_KEY not set: using a random session key for this run.")
 # Let the browser cache the (immutable) game assets to cut repeat requests.
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 3600
 
@@ -111,6 +118,21 @@ def _json_error(reason: str, status: int = 400):
 _download_miss: dict = {}
 _DOWNLOAD_MISS_TTL = 3600
 
+# Minimum abuse guard for command.php: every batch rewrites the whole save to
+# disk, so a tight client loop grinds storage. 120 batches/minute per player is
+# far above human play and well above the test-suite bursts.
+_cmd_hits: dict = {}
+_CMD_HITS_MAX = 120
+_CMD_HITS_WINDOW = 60
+
+
+def _throttled(uid) -> bool:
+    now = _time.time()
+    hits = [t for t in _cmd_hits.get(uid, []) if now - t < _CMD_HITS_WINDOW]
+    hits.append(now)
+    _cmd_hits[uid] = hits[-_CMD_HITS_MAX:]
+    return len(hits) > _CMD_HITS_MAX
+
 
 def _download_asset(url: str, destination: str) -> bool:
     """Fetch one missing asset from the original CDN. True when it was stored.
@@ -153,10 +175,14 @@ def login():
     # every request blocks the dev server with disk I/O.
     # If logging in, set session USERID, and go to play
     if request.method == 'POST':
-        session['USERID'] = request.form['USERID']
-        session['GAMEVERSION'] = request.form['GAMEVERSION']
-        log("[LOGIN] USERID:", request.form['USERID'])
-        log("[LOGIN] GAMEVERSION:", request.form['GAMEVERSION'])
+        userid = _param('USERID')
+        gameversion = _param('GAMEVERSION')
+        if not userid or not gameversion:
+            return redirect("/")
+        session['USERID'] = userid
+        session['GAMEVERSION'] = gameversion
+        log("[LOGIN] USERID:", userid)
+        log("[LOGIN] GAMEVERSION:", gameversion)
         return redirect("/play.html")
     # Login page
     if request.method == 'GET':
@@ -331,8 +357,15 @@ def get_player_info_response():
         if USERID not in all_saves_userid():
             return _json_error(f"unknown USERID: {USERID!r}")
         return (get_player_info(USERID), 200)
+    if not isinstance(map_number, int):
+        return _json_error(f"bad map: {map_number!r}")
+    subject = neighbor_session(user)
+    if subject is not None:
+        maps = subject.get("maps", [])
+        if not 0 <= map_number < len(maps):
+            return _json_error(f"bad map: {map_number!r}")
     # Arthur
-    elif user == Constant.NEIGHBOUR_ARTHUR_GUINEVERE_1 \
+    if user == Constant.NEIGHBOUR_ARTHUR_GUINEVERE_1 \
     or user == Constant.NEIGHBOUR_ARTHUR_GUINEVERE_2 \
     or user == Constant.NEIGHBOUR_ARTHUR_GUINEVERE_3:
         return (get_neighbor_info(user, map_number), 200)
@@ -408,6 +441,9 @@ def command_response():
     # assert that vanished under python -O and left the payload unchecked.
     if USERID not in all_saves_userid():
         return _json_error(f"unknown USERID: {USERID!r}")
+
+    if _throttled(USERID):
+        return _json_error("too many requests", status=429)
 
     data = _parse_command_envelope(_param('data'))
     # Opt-in wire capture (SE_CAPTURE=<path>): both the original bytes and the
