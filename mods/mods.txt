@@ -190,3 +190,9 @@ mod_armoreddragons
 # DRAGON RIDERS
 ### Permite que los jinetes sean compatibles con algunos dragones faltantes (asegúrate de haber añadido los otros mods de dragones).
 mod_riders
+
+
+# OFERTAS KOMPU 4399 (ESTUDIO, DESACTIVADO)
+### Contenido rescatado de game_config_4399.json: 1 oferta con timer (expirada en 2012) + subcategorías.
+### Solo para estudio: las ofertas vencidas pueden no mostrarse o alterar la tienda. Probar en copia de saves.
+#mod_kompu_offers_4399
