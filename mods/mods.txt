@@ -19,8 +19,8 @@ farms
 
 # IGNORAR INVITAR AMIGOS
 ### Estos mods hacen que no sea necesario invitar amigos para construir ciertos edificios o al comprar un terreno.
-mod_social_building
-mod_land_expansions
+mod_social_buildings
+mod_land_expansion
 
 # MÁQUINA DEL TIEMPO
 ### Este mod agrega la maquina del tiempo en la tienda de edificios.
