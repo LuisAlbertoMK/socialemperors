@@ -29,6 +29,35 @@ Notes:
 - The server is no longer the bottleneck for game fluidity; the client runtime
   (native Flash vs Ruffle) dominates perceived performance.
 
+## 2026-10-15 — after orjson saves + lazy log + per-batch item index
+
+Measured with `py tools/measure_perf.py` (same methodology: `curl.exe`
+`%{time_total}`, 5 warmup discarded, 30 runs). Save under test:
+`4629746f-1f64-4c3e-84eb-5ddc2c3d8ba1`.
+
+| Endpoint | 1st request | steady median | p95 | vs 2026-10-07 steady |
+| --- | --- | --- | --- | --- |
+| GET get_game_config.php (2.1 MB) | 7.7 ms | 7.7 ms | 29.0 ms | 8.0 ms -> 7.7 ms |
+| POST get_player_info.php | 5.2 ms | 4.4 ms | 6.5 ms | 5.0 ms -> 4.4 ms |
+| POST command.php (GAME_STATUS) | 5.5 ms | 5.9 ms | 11.9 ms | 6.5 ms -> 5.9 ms |
+| GET asset (.swf, 613 KB) | 9.2 ms | 8.3 ms | 13.0 ms | 5.0 ms -> 8.3 ms |
+
+Micros (same run):
+
+- Save serialization on the real save: json-indent4 0.56 ms (79.7 KB) vs
+  orjson 0.09 ms (13.0 KB) = 6.5x faster, ~6x smaller.
+- Item lookup, 300 queries over 3000 items: linear scan 24.06 ms vs dict
+  index 0.09 ms = ~280x on the lookup alone.
+
+Notes:
+
+- The `asset` steady difference (5.0 ms -> 8.3 ms) is environment noise on a
+  path this pass did not touch; p95 outliers (29.0 ms on config) confirm a
+  loaded machine during the run.
+- End-to-end gains are modest because the request is dominated by fixed
+  costs (Flask, per-request logging of `request.values`, disk); the hot
+  paths themselves (save, lookup) improved by multiples.
+
 ## Optimization history
 
 - 2026-10-07 — first pass: O(n) duplicate-item removal, no per-request save
@@ -37,3 +66,7 @@ Notes:
   lookup, in-memory quest cache, atomic save writes, del-by-index.
 - 2026-10-07 — third pass: cached the 2 MB config response, threaded server,
   gated per-request logging (`SE_VERBOSE`), browser asset caching.
+- 2026-10-15 — fourth pass (local): orjson compact saves with stdlib fallback
+  (`SE_PRETTY_SAVE=1` for readable saves), lazy log labels (no config lookup
+  with `SE_VERBOSE=0`), ephemeral per-batch item index with verify+fallback.
+  Measured with `tools/measure_perf.py` (see 2026-10-15 section above).
