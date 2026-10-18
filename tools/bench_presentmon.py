@@ -15,7 +15,8 @@ import sys
 
 
 def load(path, pid=None, skip=25.0):
-    rows = list(csv.DictReader(open(path, encoding="utf-8-sig")))
+    with open(path, encoding="utf-8-sig") as handle:
+        rows = list(csv.DictReader(handle))
     if pid is not None:
         rows = [r for r in rows if r.get("ProcessID") == str(pid)]
     rows = [r for r in rows if r.get("Dropped", "0") == "0"]
@@ -65,7 +66,7 @@ def main() -> int:
         print(f"displayed_med={statistics.median(dsp):.2f}")
     wi = max(range(len(gap)), key=lambda i: gap[i])
     print(f"worst frame: gap={gap[wi]:.1f}ms")
-    print(f"modes={sorted(set(r.get('PresentMode', '?') for r in seg))}")
+    print(f"modes={sorted({r.get('PresentMode', '?') for r in seg})}")
     return 0
 
 
