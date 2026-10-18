@@ -480,25 +480,20 @@ def mods_collect_all():
 
 @app.route("/dynamic.flash1.dev.socialpoint.es/appsfb/socialempiresdev/srvempires/get_continent_ranking.php")
 def get_continent_ranking_response():
-    # The client sends USERID, worldChange, spdebug, map and user_key here. The
-    # response is still a stub (see the ranking gap in the phase-2 document), so
-    # none of them is decoded yet.
-
-    # TODO - stub
+    # The client sends USERID, worldChange, spdebug, map and user_key here.
+    # Real ranking from local saves, same shape the client already parses:
+    # world first by level, then by xp. Empty server answers an empty board.
+    board = sorted(
+        all_saves_info(), key=lambda s: (s["level"], s["xp"]), reverse=True
+    )
     response = {
         "world_id": 0,
         "continent": [
-            {"posicion": 0, "nivel": 1, "user_id": 1111}, # villages/AcidCaos
-            {"posicion": 1, "nivel": 0},
-            {"posicion": 2, "nivel": 0},
-            {"posicion": 3, "nivel": 0},
-            {"posicion": 4, "nivel": 0},
-            {"posicion": 5, "nivel": 0},
-            {"posicion": 6, "nivel": 0},
-            {"posicion": 7, "nivel": 0}
-        ]
+            {"posicion": pos, "nivel": entry["level"], "user_id": entry["userid"]}
+            for pos, entry in enumerate(board)
+        ],
     }
-    return(response)
+    return (response, 200)
 
 
 ########

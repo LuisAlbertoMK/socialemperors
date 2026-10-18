@@ -88,6 +88,16 @@ def test_continent_ranking_without_parameters_returns_json(client):
     assert response.get_json()["world_id"] == 0
 
 
+def test_continent_ranking_lists_real_saves_in_order(client, user):
+    response = client.get(f"{BASE}/get_continent_ranking.php")
+    board = response.get_json()["continent"]
+
+    assert {row["user_id"] for row in board} >= {user}
+    levels = [row["nivel"] for row in board]
+    assert levels == sorted(levels, reverse=True)
+    assert [row["posicion"] for row in board] == list(range(len(board)))
+
+
 def test_command_without_parameters_is_rejected_as_json(client):
     response = client.post(f"{BASE}/command.php", data={})
 
