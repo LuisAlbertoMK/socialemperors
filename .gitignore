@@ -14,3 +14,6 @@ Scripts/
 pyvenv.cfg
 # A legacy save shipped inside a mod folder: stays on disk, never in the repo.
 mods/mod_saves & legacy config/*.save.json
+# Recorded gameplay traces: ~154 MB of gzipped dumps used to find the
+# commands a real client sends. Kept on disk as evidence, never in the repo.
+docs/Trace-*.json.gz
