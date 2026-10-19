@@ -8,6 +8,8 @@
 
 import json
 
+import pytest
+
 import command as command_module
 import server
 import sessions
@@ -96,3 +98,11 @@ def test_command_throttle_rejects_loops(client, user, monkeypatch):
     flooded = client.post(f"{BASE}/command.php", data=data)
     assert flooded.status_code == 429
     assert flooded.is_json
+
+
+def test_session_guards_survive_optimized_mode():
+    """USERID type guards are explicit raises, not asserts (stripped by -O)."""
+    with pytest.raises(TypeError):
+        sessions.session(123)
+    with pytest.raises(TypeError):
+        sessions.neighbor_session(None)
