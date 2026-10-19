@@ -289,7 +289,8 @@ failing the command. Covered by `tests/test_command_capture.py`.
 
 ### Run instructions for the capture session
 
-The game templates hardcode port 5050, so the server has to run on its default port:
+The templates build the SWF URLs from the port the browser used (`SE_PORT`), so
+the server can run on any port; these instructions keep the default 5050:
 
 ```bash
 cd /d/socialemperors-odd
