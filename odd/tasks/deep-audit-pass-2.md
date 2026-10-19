@@ -76,7 +76,7 @@ work is deliberately N/A.
 
 | # | Finding | Evidence | Action |
 |---|---|---|---|
-| E1 | `build/build.bat` bundles `config` but not `templates`/`villages` | `build/*.bat` | Verify the frozen build ships every runtime dir |
+| E1 | `build.bat` ships every runtime dir; `launcher_build.bat` did not copy `mods/` next to the exe | `build/*.bat` | Fixed: the launcher now creates `saves/` and copies `mods/` |
 | E2 | Docs repeat stale claims (ported paths, old counts) | `odd/tasks/*` | Fix only what a change directly contradicts |
 | E3 | `tools/measure_perf.py` is curl-based and reliable | `tools/measure_perf.py` | Use it for the latency numbers |
 
@@ -99,8 +99,8 @@ work is deliberately N/A.
 | S2 | security | decision needed: it conflicts with the cookie-less desktop launcher | — |
 | P1–P5 | perf | measured; no change justified | — |
 | C1, C3 | correctness | verified not reachable / safe | — |
-| C2 | tooling | pending | — |
-| E1 | packaging | `build.bat` ships every runtime dir; `launcher_build.bat` does not copy `mods/` | — |
+| C2 | tooling | by design: a dev-only generator that expects a hand-made `patched_config.json` | — |
+| E1 | packaging | done | this commit |
 
 ## Execution order
 
