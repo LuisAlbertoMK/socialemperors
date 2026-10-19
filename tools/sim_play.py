@@ -832,6 +832,12 @@ def main(argv: list[str] | None = None) -> int:
     temp_saves = tempfile.mkdtemp(prefix="se-sim-saves-")
     sessions_module.SAVES_DIR = temp_saves
 
+    # The soak drives thousands of batches far faster than any real client, which
+    # would trip the server's command-rate guard and flood the report with 429s
+    # that are not command-engine failures. Disable the guard for the soak; it is
+    # set before ``server`` is imported so the module reads the relaxed value.
+    os.environ.setdefault("SE_CMD_RATE_MAX", "0")
+
     # Suppress the noisy boot progress unless verbose.
     boot_stdout = io.StringIO()
     try:

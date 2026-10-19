@@ -100,6 +100,14 @@ def test_command_throttle_rejects_loops(client, user, monkeypatch):
     assert flooded.is_json
 
 
+def test_command_throttle_disabled_when_max_is_zero(monkeypatch):
+    """SE_CMD_RATE_MAX=0 turns the guard off (the soak in tools/sim_play.py)."""
+    monkeypatch.setattr(server, "_CMD_HITS_MAX", 0)
+    monkeypatch.setattr(server, "_cmd_hits", {})
+
+    assert all(server._throttled("user") is False for _ in range(500))
+
+
 def test_session_guards_survive_optimized_mode():
     """USERID type guards are explicit raises, not asserts (stripped by -O)."""
     with pytest.raises(TypeError):
