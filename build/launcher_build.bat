@@ -10,6 +10,12 @@ if /I "%1"=="clean" (
   exit /b 0
 )
 call :pyInstaller
+REM mods/ and saves/ are read from NEXT TO the exe (see bundle.py MODS_DIR), not
+REM from inside the onefile bundle. Without this copy the launcher starts with
+REM no mods at all and without a mods.txt to enable any.
+mkdir .\dist\saves
+mkdir .\dist\mods
+xcopy /E /I /Y "..\mods" ".\dist\mods" >NUL
 echo [+] Building Done!
 pause>NUL
 exit
