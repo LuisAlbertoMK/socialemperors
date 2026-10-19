@@ -108,6 +108,12 @@ def test_command_throttle_disabled_when_max_is_zero(monkeypatch):
     assert all(server._throttled("user") is False for _ in range(500))
 
 
+def test_session_cookie_is_samesite_lax(client):
+    """A cross-site form POST must not carry the session cookie."""
+    response = client.post("/", data={"USERID": "someone", "GAMEVERSION": "swf"})
+    assert "SameSite=Lax" in response.headers.get("Set-Cookie", "")
+
+
 def test_session_guards_survive_optimized_mode():
     """USERID type guards are explicit raises, not asserts (stripped by -O)."""
     with pytest.raises(TypeError):
