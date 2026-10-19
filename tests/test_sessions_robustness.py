@@ -107,6 +107,36 @@ def test_save_with_a_broken_map_names_entry_still_loads(
     assert "broken-map-name" in sessions.all_saves_userid()
 
 
+def test_corrupted_save_is_recovered_from_its_backup(
+    tmp_path, monkeypatch, restored_village_state
+):
+    """The rolling .bak must be loaded, not merely written."""
+    saves = tmp_path / "saves"
+    saves.mkdir()
+    villages = tmp_path / "villages"
+    villages.mkdir()
+    with open("villages/initial.json", encoding="utf-8") as template:
+        village = json.load(template)
+    village["playerInfo"]["pid"] = "recover-me"
+    village["playerInfo"]["name"] = "Intact"
+    save = saves / "recover-me.save.json"
+    save.write_text(json.dumps(village), encoding="utf-8")
+    (saves / "recover-me.save.json.bak").write_text(
+        json.dumps(village), encoding="utf-8"
+    )
+    save.write_text("{ truncated", encoding="utf-8")
+
+    monkeypatch.setattr(sessions, "SAVES_DIR", str(saves))
+    monkeypatch.setattr(sessions, "VILLAGES_DIR", str(villages))
+
+    sessions.load_saved_villages()
+
+    assert "recover-me" in sessions.all_saves_userid()
+    assert sessions.session("recover-me")["playerInfo"]["name"] == "Intact"
+    # Recovery is persisted, so the next boot starts from a healthy file.
+    assert json.loads(save.read_text(encoding="utf-8"))["playerInfo"]["name"] == "Intact"
+
+
 def test_missing_villages_directory_stops_with_a_clear_message(
     tmp_path, monkeypatch, restored_village_state, capsys
 ):

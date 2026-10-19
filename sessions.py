@@ -138,20 +138,27 @@ def load_saved_villages():
         else:
             __villages[str(USERID)] = village
             print("Ok.")
-    # Saves in /saves
+    # Saves in /saves. A save that cannot be read, validated or migrated is
+    # retried from its rolling .bak before it is given up on: backup_session()
+    # has been writing that copy all along, and a backup nobody loads protects
+    # nothing.
     for file in os.listdir(SAVES_DIR):
         if not file.endswith(".save.json"):
             continue
         print(f" * Loading save at {file}... ", end='')
-        try:
-            with open(os.path.join(SAVES_DIR, file), "rb") as sf:
-                save = _loads_json_bytes(sf.read())
-        except (ValueError, UnicodeDecodeError) as error:
-            print(f"Corrupted JSON: {error}")
+        path = os.path.join(SAVES_DIR, file)
+        loaded = _load_one_save(path)
+        recovered = False
+        if loaded is None:
+            backup_path = path + ".bak"
+            loaded = _load_one_save(backup_path)
+            recovered = loaded is not None
+            if recovered:
+                print(f"Recovered from {os.path.basename(backup_path)}.")
+        if loaded is None:
+            print("Skipped: no usable save or backup.")
             continue
-        if not is_valid_village(save):
-            print("Invalid Save.")
-            continue
+        save, modified = loaded
         USERID = save["playerInfo"]["pid"]
         try:
             map_name = save["playerInfo"]["map_names"][ save["playerInfo"]["default_map"] ]
@@ -160,16 +167,10 @@ def load_saved_villages():
             # because its map name is missing or of the wrong shape.
             map_name = '?'
         print(f"({map_name}) Ok.")
-        try:
-            modified = migrate_loaded_save(save) # check save version for migration
-        except Exception as error:
-            # A save that passes is_valid_village but cannot be migrated (an empty
-            # maps list reaches maps[0]) must not stop the server from starting:
-            # skip it the same way a corrupted file is skipped.
-            print(f"Could not migrate {file}: {error!r}")
-            continue
         __saves[str(USERID)] = save
-        if modified:
+        # Persist a recovered file immediately, so the next restart does not
+        # have to recover it again.
+        if modified or recovered:
             save_session(USERID)
     
 
@@ -285,6 +286,35 @@ def neighbors(USERID: str) -> list:
 
 # Check for valid village
 # The reason why this was implemented is to warn the user if a save game from Social Wars was used by accident
+
+def _load_one_save(path: str):
+    """Read, validate and migrate one save file.
+
+    Returns ``(save, modified)``, or ``None`` when the file is unusable. The
+    loader calls this for the main file and, if that fails, for its ``.bak``, so
+    both paths share exactly the same validation rules.
+    """
+    try:
+        with open(path, "rb") as save_file:
+            save = _loads_json_bytes(save_file.read())
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError, UnicodeDecodeError) as error:
+        print(f"Unreadable {os.path.basename(path)}: {error}")
+        return None
+    if not is_valid_village(save):
+        print(f"Invalid save {os.path.basename(path)}.")
+        return None
+    try:
+        modified = migrate_loaded_save(save)  # check save version for migration
+    except Exception as error:
+        # A save that passes is_valid_village but cannot be migrated (an empty
+        # maps list reaches maps[0]) must not stop the server from starting:
+        # skip it the same way a corrupted file is skipped.
+        print(f"Could not migrate {os.path.basename(path)}: {error!r}")
+        return None
+    return save, modified
+
 
 def is_valid_village(save: dict):
     if "playerInfo" not in save or "maps" not in save or "privateState" not in save:
