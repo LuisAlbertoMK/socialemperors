@@ -908,5 +908,4 @@ def do_command(USERID, cmd, args):
     if handler is None:
         log(f"Unhandled command '{cmd}' -> args", args)
         return
-    if handler(USERID, save, args):
-        return
+    handler(USERID, save, args)
