@@ -1,0 +1,100 @@
+# Deep audit pass 2 — evidence-based improvement plan
+
+Second pass over the Social Emperors server: disassemble each area, keep only
+what measurably improves security, correctness or speed, and prove every change
+with tests. Work happens on `audit/deep-pass-2`; `main` stays at `bfd67ab`.
+
+## Quick path
+
+1. Read "Findings ledger" for the ranked list.
+2. Each item lands as its own commit with a focused test and a before/after note.
+3. Re-run `python -m pytest tests -q` + `ruff check .` after every batch.
+
+## How this pass is measured
+
+| Metric | Baseline (pass 1) | How |
+|---|---|---|
+| Test suite | 281 passed, ~5 s | `python -m pytest tests -q` |
+| Command soak | 1063 batches, 0 failed | `python tools/sim_play.py --sessions 5 --seed 1` |
+| Config payload | 2.01 MB raw / 0.14 MB gzip | `get_game_config.php` |
+| Request latency | capture with `tools/measure_perf.py` on a live server | curl, warm server |
+
+Security items are measured as "attack attempt blocked by a test", not as
+latency: eliminating a write outside the data dir has no ms to report.
+
+## Area A — Backend security (highest priority)
+
+| # | Finding | Evidence | Impact | Fix | Risk |
+|---|---|---|---|---|---|
+| S1 | Asset loader writes outside `download_assets/assets/` when `path` contains `..` | `server.py:278-306` (`os.path.join(download_dir, path)` then `open(..., "wb")`) | Arbitrary file write with CDN-controlled bytes | Resolve and confine to `download_dir`; 404 on escape | Low |
+| S2 | `command.php` authorizes the client-supplied `USERID`, not the session | `server.py:452-459` | Any LAN client can mutate any save (server binds `0.0.0.0`) | Bind to `session['USERID']` | **High** — the SWF and several tests post without a session; needs a live-play check first |
+| S3 | No CSRF protection on cookie-authenticated POSTs | Flask default `SESSION_COOKIE_SAMESITE=None` | A hostile page can trigger `/mods/collect_all` | `SESSION_COOKIE_SAMESITE="Lax"` | Low (SWF is same-origin; desktop launcher has no cookie) |
+| S4 | `os.makedirs()` without `exist_ok` races on concurrent first fetch | `server.py:162-164` | `FileExistsError` -> 500 under two cold requests | `exist_ok=True` | None |
+| S5 | `SE_SECRET_KEY` unset mints a random key per run | `server.py:61-66` | Old login cookies die on restart (documented) | Keep; warn is accurate | N/A |
+| S6 | `0.0.0.0` default exposes the server on the LAN | `server.py:53` | Intentional LAN play; amplifies S2 | Document; pair with S2 | N/A |
+
+## Area B — Backend performance
+
+| # | Finding | Evidence | Impact | Action |
+|---|---|---|---|---|
+| P1 | `all_saves_userid()` allocates a list per command request | `sessions.py:200-203`, `server.py:458` | O(n) per request, negligible at local scale | Add `has_save()` membership check |
+| P2 | `get_game_config()` and config+gzip payloads are already cached | `get_game_config.py:73`, `server.py:319-335` | Good | Keep; add a benchmark to guard regressions |
+| P3 | Full save rewrite per command batch | `sessions.py:336-357` | Disk-bound; throttled by design | Not changing without a durability plan |
+| P4 | `_download_miss` is unbounded | `server.py:130` | Grows with unique misses | Bound or LRU if it ever matters |
+| P5 | `log(session)` dumps the session on every play/ruffle | `server.py:210,228` | Log noise | Drop or lower to verbose |
+
+## Area C — Backend correctness / robustness
+
+| # | Finding | Evidence | Impact | Action |
+|---|---|---|---|---|
+| C1 | `get_player_info_response` assumes `user` is a `str` before `.startswith` | `server.py:389` | 500 on a non-string `user` | Type-guard before use |
+| C2 | `config/patch.py` reads a non-existent `patched_config.json` | `config/patch.py:7` | Dead/broken helper | Fix or delete |
+| C3 | `mods_collect_all` assumes `neighbor_session` is non-None | `server.py:490` | Safe today (membership checked above) | Add a guard for safety |
+
+## Area D — Frontend
+
+The UI is a thin shell around a fixed 760x600 Flash movie, so most web-surface
+work is deliberately N/A.
+
+| # | Topic | Verdict |
+|---|---|---|
+| D1 | Responsive | N/A for the movie; login page already centers. No viewport meta, but the canvas is fixed. |
+| D2 | SEO | N/A: private local server, no crawlers. |
+| D3 | Forms | Login form has no CSRF token (low impact); keep unless S3 changes it |
+| D4 | Minimalism | Already minimal; `base.html` removed the duplication |
+| D5 | Accessibility | Game bar uses `<a href="#">`; add `aria-label` only if it earns its keep |
+
+## Area E — Tooling / build / docs
+
+| # | Finding | Evidence | Action |
+|---|---|---|---|
+| E1 | `build/build.bat` bundles `config` but not `templates`/`villages` | `build/*.bat` | Verify the frozen build ships every runtime dir |
+| E2 | Docs repeat stale claims (ported paths, old counts) | `odd/tasks/*` | Fix only what a change directly contradicts |
+| E3 | `tools/measure_perf.py` is curl-based and reliable | `tools/measure_perf.py` | Use it for the latency numbers |
+
+## Area F — Tests / CI
+
+| # | Finding | Evidence | Action |
+|---|---|---|---|
+| F1 | Windows + Linux CI now runs | `.github/workflows/tests.yml` | Keep green |
+| F2 | No test for the asset-loader traversal | `tests/test_asset_route.py` | Add with S1 |
+| F3 | Concurrency covered for state, not for asset writes | `tests/test_state_concurrency.py` | Add with S4 |
+
+## Findings ledger
+
+| ID | Area | Status | Commit |
+|---|---|---|---|
+| S1 | security | in progress | — |
+| S4 | security | in progress | — |
+| S3 | security | planned | — |
+| S2 | security | blocked on live-play check | — |
+| C1 | correctness | planned | — |
+| P1 | perf | planned | — |
+| C2 | tooling | planned | — |
+
+## Execution order
+
+1. **Batch 1 (safe, testable):** S1, S4, S3, F2, F3.
+2. **Batch 2:** C1, C3, P1, P5.
+3. **Batch 3:** S2 decision (needs a real SWF playthrough on LAN).
+4. **Batch 4:** E1, C2, docs.

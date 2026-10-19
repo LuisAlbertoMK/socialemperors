@@ -66,6 +66,11 @@ else:
     print("[WARN] SE_SECRET_KEY not set: using a random session key for this run.")
 # Let the browser cache the (immutable) game assets to cut repeat requests.
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 3600
+# Cookie-authenticated POSTs (e.g. /mods/collect_all) must not be triggerable
+# from another origin. The game and the desktop launcher are same-origin, so
+# Lax keeps them working while closing the cross-site form-POST hole.
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
 
 # The Ruffle player files DO change during development (version bumps, nightly
 # trials), unlike the immutable game assets above. Force revalidation so the
@@ -123,6 +128,26 @@ def _json_error(reason: str, status: int = 400):
     )
 
 
+def _safe_join(base_dir: str, relative_path: str):
+    """Join ``relative_path`` under ``base_dir``, refusing anything that escapes.
+
+    Flask's ``<path:path>`` converter accepts ``..``, so a raw ``os.path.join``
+    would let a crafted asset URL resolve outside the data directory. The asset
+    loader writes whatever the CDN returns to that path, which turns a traversal
+    into an arbitrary file write. Return ``None`` when the resolved path is not
+    inside ``base_dir``; callers answer 404.
+    """
+    base = os.path.realpath(base_dir)
+    candidate = os.path.realpath(os.path.join(base, relative_path))
+    try:
+        if os.path.commonpath([base, candidate]) != base:
+            return None
+    except ValueError:
+        # Different drives on Windows: the candidate cannot be inside ``base``.
+        return None
+    return candidate
+
+
 # Paths whose CDN fetch recently failed (path -> timestamp_now() of the failure).
 # The original CDN is long dead, so retrying every miss would handshake a dead
 # host on hot paths (e.g. a missing effect requested on every cast). Skip the
@@ -160,8 +185,10 @@ def _download_asset(url: str, destination: str) -> bool:
     import urllib.request
 
     directory = os.path.dirname(destination)
-    if directory and not os.path.exists(directory):
-        os.makedirs(directory)
+    if directory:
+        # exist_ok: two cold requests may race between the exists check and the
+        # mkdir; the loser must not turn into a 500.
+        os.makedirs(directory, exist_ok=True)
     try:
         with urllib.request.urlopen(url, timeout=30) as response, \
                 open(destination, "wb") as out_file:
@@ -278,8 +305,12 @@ def similar_05122012_dynamic():
 @app.route("/default01.static.socialpointgames.com/static/socialempires/<path:path>")
 def static_assets_loader(path):
     download_dir = os.path.join(BASE_DIR, "download_assets", "assets")
-    bundled_path = os.path.join(ASSETS_DIR, path)
-    cached_path = os.path.join(download_dir, path)
+    bundled_path = _safe_join(ASSETS_DIR, path)
+    cached_path = _safe_join(download_dir, path)
+    if bundled_path is None or cached_path is None:
+        # "<path:path>" accepts ".."; never resolve (or write) outside a data dir.
+        log(f"[WARN] rejected asset path outside its data dir: {path!r}")
+        return ("", 404)
 
     if os.path.exists(bundled_path):
         # Use provided asset
