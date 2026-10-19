@@ -35,21 +35,29 @@ latency: eliminating a write outside the data dir has no ms to report.
 
 ## Area B — Backend performance
 
-| # | Finding | Evidence | Impact | Action |
-|---|---|---|---|---|
-| P1 | `all_saves_userid()` allocates a list per command request | `sessions.py:200-203`, `server.py:458` | O(n) per request, negligible at local scale | Add `has_save()` membership check |
-| P2 | `get_game_config()` and config+gzip payloads are already cached | `get_game_config.py:73`, `server.py:319-335` | Good | Keep; add a benchmark to guard regressions |
-| P3 | Full save rewrite per command batch | `sessions.py:336-357` | Disk-bound; throttled by design | Not changing without a durability plan |
-| P4 | `_download_miss` is unbounded | `server.py:130` | Grows with unique misses | Bound or LRU if it ever matters |
-| P5 | `log(session)` dumps the session on every play/ruffle | `server.py:210,228` | Log noise | Drop or lower to verbose |
+Profiled with `cProfile` over `tools/sim_play.py --sessions 1 --seed 1`
+(218 batches, 3.14 s total). The dominant server cost is `save_session`
+(0.52 s, ~2.4 ms/batch), split between `open` and the atomic `os.replace`;
+that is disk I/O, not CPU. The large `deepcopy` (0.80 s) is the simulator's
+invariant checker, not the server. Conclusion: no honest micro-optimisation
+moves the needle; the remaining work is correctness.
+
+| # | Finding | Evidence | Verdict |
+|---|---|---|---|
+| P1 | `all_saves_userid()` allocates a list per command request | `sessions.py:200-203`, `server.py:458` | Negligible at local scale; not worth the churn |
+| P2 | `get_game_config()` and config+gzip payloads are already cached | `get_game_config.py:73`, `server.py:319-335` | Correct; leave as is |
+| P3 | Full save rewrite per command batch | `sessions.py:336-357` | I/O-bound and throttled by design; a debounce would trade durability for speed |
+| P4 | `_download_miss` is unbounded | `server.py:130` | Bounded by the asset set in practice; revisit only if it grows |
+| P5 | `log(session)` dumps the session on every play/ruffle | `server.py:210,228` | Already gated by `SE_VERBOSE` in `logger.py:12`; no change |
 
 ## Area C — Backend correctness / robustness
 
 | # | Finding | Evidence | Impact | Action |
 |---|---|---|---|---|
-| C1 | `get_player_info_response` assumes `user` is a `str` before `.startswith` | `server.py:389` | 500 on a non-string `user` | Type-guard before use |
-| C2 | `config/patch.py` reads a non-existent `patched_config.json` | `config/patch.py:7` | Dead/broken helper | Fix or delete |
-| C3 | `mods_collect_all` assumes `neighbor_session` is non-None | `server.py:490` | Safe today (membership checked above) | Add a guard for safety |
+| C1 | `get_player_info_response` assumes `user` is a `str` before `.startswith` | `server.py:389` | None: `_param` always returns `str` or `None`, and `None` is handled first | Verified not reachable |
+| C2 | `config/patch.py` reads a non-existent `patched_config.json` | `config/patch.py:7` | Dead/broken dev helper | Fix or delete |
+| C3 | `mods_collect_all` assumes `neighbor_session` is non-None | `server.py:490` | Safe: membership is checked first and saves are never removed at runtime | No change |
+| C4 | The rolling `.bak` was written but never read on boot | `sessions.py:142-173`, `sessions.py:335-357` | A corrupt save was skipped even though a good backup existed | Try the `.bak` through the same validation/migration path and persist the recovery |
 
 ## Area D — Frontend
 
@@ -84,17 +92,18 @@ work is deliberately N/A.
 
 | ID | Area | Status | Commit |
 |---|---|---|---|
-| S1 | security | in progress | — |
-| S4 | security | in progress | — |
-| S3 | security | planned | — |
-| S2 | security | blocked on live-play check | — |
-| C1 | correctness | planned | — |
-| P1 | perf | planned | — |
-| C2 | tooling | planned | — |
+| S1 | security | done | `f313a8c` |
+| S4 | security | done | `f313a8c` |
+| S3 | security | done | `f313a8c` |
+| C4 | correctness | done | this commit |
+| S2 | security | decision needed: it conflicts with the cookie-less desktop launcher | — |
+| P1–P5 | perf | measured; no change justified | — |
+| C1, C3 | correctness | verified not reachable / safe | — |
+| C2 | tooling | pending | — |
+| E1 | packaging | `build.bat` ships every runtime dir; `launcher_build.bat` does not copy `mods/` | — |
 
 ## Execution order
 
-1. **Batch 1 (safe, testable):** S1, S4, S3, F2, F3.
-2. **Batch 2:** C1, C3, P1, P5.
-3. **Batch 3:** S2 decision (needs a real SWF playthrough on LAN).
-4. **Batch 4:** E1, C2, docs.
+1. **Batch 1 (done):** S1, S4, S3, F2, F3 — `f313a8c`.
+2. **Batch 2 (done):** C4, plus measurement that closes P1–P5, C1 and C3.
+3. **Batch 3:** S2 decision (needs a real SWF/LAN playthrough), C2, E1.
