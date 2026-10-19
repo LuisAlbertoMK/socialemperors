@@ -120,13 +120,17 @@ _DOWNLOAD_MISS_TTL = 3600
 
 # Minimum abuse guard for command.php: every batch rewrites the whole save to
 # disk, so a tight client loop grinds storage. 120 batches/minute per player is
-# far above human play and well above the test-suite bursts.
+# far above human play and well above the test-suite bursts. A value of 0 (or
+# less) disables the guard, which the soak in tools/sim_play.py needs because it
+# drives thousands of batches far faster than any real client.
 _cmd_hits: dict = {}
-_CMD_HITS_MAX = 120
+_CMD_HITS_MAX = int(os.environ.get("SE_CMD_RATE_MAX", 120))
 _CMD_HITS_WINDOW = 60
 
 
 def _throttled(uid) -> bool:
+    if _CMD_HITS_MAX <= 0:
+        return False
     now = _time.time()
     hits = [t for t in _cmd_hits.get(uid, []) if now - t < _CMD_HITS_WINDOW]
     hits.append(now)
