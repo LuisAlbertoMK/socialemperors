@@ -48,8 +48,10 @@ from logger import capture, log
 from quests import get_quest_map
 from version import version_name
 
-host = '0.0.0.0'
-port = 5050
+# Bind address and port. Override with SE_HOST/SE_PORT, e.g. to run a second
+# instance or to sit behind a proxy without editing the source.
+host = os.environ.get("SE_HOST", "0.0.0.0")
+port = int(os.environ.get("SE_PORT", 5050))
 
 app = Flask(__name__, template_folder=TEMPLATES_DIR)
 # Session signing key, available outside __main__ so `flask run` and the test
@@ -78,6 +80,16 @@ def _server_ip() -> str:
     # Use the host the client actually connected to, so devices on the LAN
     # get the PC's LAN IP instead of 127.0.0.1 (which would point to themselves).
     return request.host.rsplit(':', 1)[0]
+
+
+def _server_port() -> str:
+    # The port the client actually reached, so a proxy or a non-default SE_PORT
+    # still yields SWF URLs the browser can load. Falls back to the port this
+    # process binds when the Host header omits one (the test client, or :80).
+    host_header = request.host
+    if ':' in host_header:
+        return host_header.rsplit(':', 1)[1]
+    return str(port)
 
 
 def _param(name: str, default=None):
@@ -209,7 +221,7 @@ def play():
     GAMEVERSION = session['GAMEVERSION']
     log("[PLAY] USERID:", USERID)
     log("[PLAY] GAMEVERSION:", GAMEVERSION)
-    return render_template("play.html", save_info=save_info(USERID), serverTime=timestamp_now(), friendsInfo=fb_friends_str(USERID), version=version_name, GAMEVERSION=GAMEVERSION, SERVERIP=_server_ip())
+    return render_template("play.html", save_info=save_info(USERID), serverTime=timestamp_now(), friendsInfo=fb_friends_str(USERID), version=version_name, GAMEVERSION=GAMEVERSION, SERVERIP=_server_ip(), SERVERPORT=_server_port())
 
 @app.route("/ruffle.html")
 def ruffle():
@@ -227,7 +239,7 @@ def ruffle():
     GAMEVERSION = session['GAMEVERSION']
     log("[RUFFLE] USERID:", USERID)
     log("[RUFFLE] GAMEVERSION:", GAMEVERSION)
-    return render_template("ruffle.html", save_info=save_info(USERID), serverTime=timestamp_now(), version=version_name, GAMEVERSION=GAMEVERSION, SERVERIP=_server_ip())
+    return render_template("ruffle.html", save_info=save_info(USERID), serverTime=timestamp_now(), version=version_name, GAMEVERSION=GAMEVERSION, SERVERIP=_server_ip(), SERVERPORT=_server_port())
 
 
 @app.route("/new.html")
@@ -475,7 +487,14 @@ def mods_collect_all():
     USERID = session['USERID']
     if USERID not in all_saves_userid():
         return _json_error(f"unknown USERID: {USERID!r}")
-    town_id = _int_param('town_id', default=0)
+    save = neighbor_session(USERID)
+    maps = save.get("maps") or []
+    # Default to the player's own default map so the button works without the
+    # caller knowing the map index, and reject an out-of-range index here rather
+    # than let it reach save["maps"][town_id] and raise.
+    town_id = _int_param('town_id', default=save["playerInfo"].get("default_map", 0))
+    if not isinstance(town_id, int) or not 0 <= town_id < len(maps):
+        return _json_error(f"bad town_id: {town_id!r}")
     multiplier = _int_param('multiplier', default=1)
     from sessions import save_session as _save_session
     do_command(USERID, Constant.CMD_MASS_COLLECT, [town_id, multiplier])

@@ -14,6 +14,7 @@ param(
     [string]$RuffleExe = "D:\ruffle-desktop\ruffle.exe",
     [string]$UserId = "",
     [string]$ServerIp = "127.0.0.1",
+    [int]$Port = 5050,
     [int]$Width = 760,
     [int]$Height = 600,
     [switch]$Fullscreen,
@@ -23,7 +24,7 @@ param(
     [string]$Scale = "",
     [switch]$ForceScale
 )
-$base = "http://${ServerIp}:5050"
+$base = "http://${ServerIp}:${Port}"
 
 # 1. Server up? Start it if down.
 $serverOk = $false
@@ -32,6 +33,7 @@ for ($i = 0; $i -lt 5 -and -not $serverOk; $i++) {
 }
 if (-not $serverOk) {
     $repoRoot = Split-Path -Parent $PSScriptRoot
+    $env:SE_PORT = "$Port"
     Start-Process python -ArgumentList "server.py" -WorkingDirectory $repoRoot
     for ($i = 0; $i -lt 30 -and -not $serverOk; $i++) {
         Start-Sleep 1
