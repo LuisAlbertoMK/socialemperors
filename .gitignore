@@ -17,3 +17,5 @@ mods/mod_saves & legacy config/*.save.json
 # Recorded gameplay traces: ~154 MB of gzipped dumps used to find the
 # commands a real client sends. Kept on disk as evidence, never in the repo.
 docs/Trace-*.json.gz
+# Local CodeGraph index: per-machine, rebuilt on demand, never committed.
+.codegraph/
