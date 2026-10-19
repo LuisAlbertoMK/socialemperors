@@ -179,7 +179,8 @@ def load_saved_villages():
 def new_village() -> str:
     # Generate USERID
     USERID: str = str(uuid.uuid4())
-    assert USERID not in all_userid()
+    if USERID in all_userid():
+        raise RuntimeError(f"generated duplicate USERID: {USERID}")
     # Copy init
     village = copy.deepcopy(__initial_village)
     # Custom values
@@ -224,12 +225,15 @@ def all_saves_info() -> list:
 
 @synchronized
 def session(USERID: str) -> dict:
-    assert(isinstance(USERID, str))
+    # An explicit raise (not assert) so the guard survives ``python -O``.
+    if not isinstance(USERID, str):
+        raise TypeError("USERID must be a str")
     return __saves.get(USERID)
 
 @synchronized
 def neighbor_session(USERID: str) -> dict:
-    assert(isinstance(USERID, str))
+    if not isinstance(USERID, str):
+        raise TypeError("USERID must be a str")
     if USERID in __saves:
         return __saves[USERID]
     if USERID in __villages:
