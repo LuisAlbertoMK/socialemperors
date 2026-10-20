@@ -4,6 +4,21 @@ Second pass over the Social Emperors server: disassemble each area, keep only
 what measurably improves security, correctness or speed, and prove every change
 with tests. Work happens on `audit/deep-pass-2`; `main` stays at `bfd67ab`.
 
+## Results
+
+Four fixes landed, each with a regression test; `main` was never touched.
+
+| Change | Commit | Proof |
+|---|---|---|
+| The asset fallback cannot write outside its data dir, directory creation is idempotent, and the session cookie is `SameSite=Lax` | `f313a8c` | `tests/test_asset_loader.py`, `tests/test_hardening.py` |
+| A corrupt save recovers from `<save>.json.bak` at boot and the recovery is persisted | `d223462` | `tests/test_sessions_robustness.py` |
+| The onefile launcher ships `mods/` and `saves/` next to the exe | `7fadedd` | build script review |
+| The server binds `127.0.0.1` by default; LAN is an explicit, warned `SE_HOST=0.0.0.0` opt-in | `485c74c` | `tests/test_server_bind.py` |
+
+Verification on the branch tip: **291 tests pass**, `ruff check .` clean, and
+`tools/sim_play.py --sessions 5 --seed 1` reports **1063 batches, 0 failed**
+(5 expected `command_warning` findings, all the same `move` edge case).
+
 ## Quick path
 
 1. Read "Findings ledger" for the ranked list.
