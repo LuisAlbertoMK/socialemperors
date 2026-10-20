@@ -15,7 +15,7 @@ Four fixes landed, each with a regression test; `main` was never touched.
 | The onefile launcher ships `mods/` and `saves/` next to the exe | `7fadedd` | build script review |
 | The server binds `127.0.0.1` by default; LAN is an explicit, warned `SE_HOST=0.0.0.0` opt-in | `485c74c` | `tests/test_server_bind.py` |
 
-Verification on the branch tip: **291 tests pass**, `ruff check .` clean, and
+Verification on the branch tip: **293 tests pass**, `ruff check .` clean, and
 `tools/sim_play.py --sessions 5 --seed 1` reports **1063 batches, 0 failed**
 (5 expected `command_warning` findings, all the same `move` edge case).
 
@@ -111,7 +111,9 @@ work is deliberately N/A.
 | S4 | security | done | `f313a8c` |
 | S3 | security | done | `f313a8c` |
 | C4 | correctness | done | this commit |
+| C5 | correctness | done: recovery no longer overwrites the `.bak` it was rebuilt from | review |
 | S2 | security | mitigated: loopback default, explicit LAN opt-in | this commit |
+| S7 | security | done: a NUL byte in an asset path is a 404, not a 500 | review |
 | P1–P5 | perf | measured; no change justified | — |
 | C1, C3 | correctness | verified not reachable / safe | — |
 | C2 | tooling | by design: a dev-only generator that expects a hand-made `patched_config.json` | — |
