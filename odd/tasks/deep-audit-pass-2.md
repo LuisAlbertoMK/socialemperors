@@ -27,7 +27,7 @@ latency: eliminating a write outside the data dir has no ms to report.
 | # | Finding | Evidence | Impact | Fix | Risk |
 |---|---|---|---|---|---|
 | S1 | Asset loader writes outside `download_assets/assets/` when `path` contains `..` | `server.py:278-306` (`os.path.join(download_dir, path)` then `open(..., "wb")`) | Arbitrary file write with CDN-controlled bytes | Resolve and confine to `download_dir`; 404 on escape | Low |
-| S2 | `command.php` authorizes the client-supplied `USERID`, not the session | `server.py:452-459` | Any LAN client can mutate any save (server binds `0.0.0.0`) | Bind to `session['USERID']` | **High** — the SWF and several tests post without a session; needs a live-play check first |
+| S2 | `command.php` authorizes the client-supplied `USERID`, not the session | `server.py:483-503` | Any LAN client can mutate any save (the old default bound `0.0.0.0`) | Loopback by default; LAN is an explicit `SE_HOST=0.0.0.0` opt-in, warned and documented. Session binding was rejected: the cookie-less desktop launcher needs the request `USERID`. | Low — LAN play becomes opt-in |
 | S3 | No CSRF protection on cookie-authenticated POSTs | Flask default `SESSION_COOKIE_SAMESITE=None` | A hostile page can trigger `/mods/collect_all` | `SESSION_COOKIE_SAMESITE="Lax"` | Low (SWF is same-origin; desktop launcher has no cookie) |
 | S4 | `os.makedirs()` without `exist_ok` races on concurrent first fetch | `server.py:162-164` | `FileExistsError` -> 500 under two cold requests | `exist_ok=True` | None |
 | S5 | `SE_SECRET_KEY` unset mints a random key per run | `server.py:61-66` | Old login cookies die on restart (documented) | Keep; warn is accurate | N/A |
@@ -96,7 +96,7 @@ work is deliberately N/A.
 | S4 | security | done | `f313a8c` |
 | S3 | security | done | `f313a8c` |
 | C4 | correctness | done | this commit |
-| S2 | security | decision needed: it conflicts with the cookie-less desktop launcher | — |
+| S2 | security | mitigated: loopback default, explicit LAN opt-in | this commit |
 | P1–P5 | perf | measured; no change justified | — |
 | C1, C3 | correctness | verified not reachable / safe | — |
 | C2 | tooling | by design: a dev-only generator that expects a hand-made `patched_config.json` | — |
@@ -106,4 +106,4 @@ work is deliberately N/A.
 
 1. **Batch 1 (done):** S1, S4, S3, F2, F3 — `f313a8c`.
 2. **Batch 2 (done):** C4, plus measurement that closes P1–P5, C1 and C3.
-3. **Batch 3:** S2 decision (needs a real SWF/LAN playthrough), C2, E1.
+3. **Batch 3 (done):** S2 (loopback default), C2 ruled by design, E1 launcher packaging.

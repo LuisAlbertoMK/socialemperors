@@ -35,6 +35,15 @@ This project is dedicated to preserving this Flash game so that it's not lost to
 
 :information_source: To play on GNU/Linux check [this page](LINUX.md).
 
+### Playing from another device (LAN)
+
+The server listens on `127.0.0.1` by default. To play from another device on
+the same network, start it with `SE_HOST=0.0.0.0` (PowerShell:
+`$env:SE_HOST="0.0.0.0"`) and open `http://<your-pc-ip>:5050/` on that device.
+
+:warning: LAN mode has no per-player authentication: every device on the
+network can read and modify the saves. Only enable it on a network you trust.
+
 ## Tools
 
 :penguin: [Social Empires on GNU/Linux](LINUX.md)

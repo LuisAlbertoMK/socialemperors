@@ -48,10 +48,18 @@ from logger import capture, log
 from quests import get_quest_map
 from version import version_name
 
-# Bind address and port. Override with SE_HOST/SE_PORT, e.g. to run a second
-# instance or to sit behind a proxy without editing the source.
-host = os.environ.get("SE_HOST", "0.0.0.0")
-port = int(os.environ.get("SE_PORT", 5050))
+
+# Bind address and port. Loopback by default: the documented way to play is
+# http://127.0.0.1:5050/, and command.php authenticates by the USERID in the
+# request (the SWF and the cookie-less desktop launcher both rely on that), so
+# binding 0.0.0.0 would expose every save to every device on the network.
+# Opt into LAN play explicitly with SE_HOST=0.0.0.0 (see README).
+def _bind_host() -> str:
+    return os.environ.get("SE_HOST", "127.0.0.1")
+
+
+host = _bind_host()
+port = int(os.environ.get("SE_PORT", "5050"))
 
 app = Flask(__name__, template_folder=TEMPLATES_DIR)
 # Session signing key, available outside __main__ so `flask run` and the test
@@ -557,4 +565,7 @@ def get_continent_ranking_response():
 print (" [+] Running server...")
 
 if __name__ == '__main__':
+    print(f" [+] Listening on {host}:{port}")
+    if host in ("0.0.0.0", "::"):
+        print(" [WARN] LAN mode: every device on this network can read and modify saves.")
     app.run(host=host, port=port, debug=False, threaded=True)
