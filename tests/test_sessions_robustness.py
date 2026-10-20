@@ -7,9 +7,11 @@ runtime — including a frozen build, where ``site.py`` (and therefore the
 """
 
 import json
+import os
 import site as site_module
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -135,6 +137,39 @@ def test_corrupted_save_is_recovered_from_its_backup(
     assert sessions.session("recover-me")["playerInfo"]["name"] == "Intact"
     # Recovery is persisted, so the next boot starts from a healthy file.
     assert json.loads(save.read_text(encoding="utf-8"))["playerInfo"]["name"] == "Intact"
+
+
+def test_recovery_keeps_the_backup_it_recovered_from(
+    tmp_path, monkeypatch, restored_village_state
+):
+    """Persisting a recovery must not copy the corrupt main file over the .bak.
+
+    The backup is only rewritten once it is older than SE_BACKUP_SECONDS, so an
+    old-but-good .bak is exactly the case where save_session would clobber it.
+    """
+    saves = tmp_path / "saves"
+    saves.mkdir()
+    villages = tmp_path / "villages"
+    villages.mkdir()
+    with open("villages/initial.json", encoding="utf-8") as template:
+        village = json.load(template)
+    village["playerInfo"]["pid"] = "recover-me"
+    village["playerInfo"]["name"] = "Intact"
+    save = saves / "recover-me.save.json"
+    backup = saves / "recover-me.save.json.bak"
+    backup.write_text(json.dumps(village), encoding="utf-8")
+    stale = time.time() - sessions.BACKUP_INTERVAL_SECONDS - 60
+    os.utime(backup, (stale, stale))
+    save.write_text("{ truncated", encoding="utf-8")
+
+    monkeypatch.setattr(sessions, "SAVES_DIR", str(saves))
+    monkeypatch.setattr(sessions, "VILLAGES_DIR", str(villages))
+
+    sessions.load_saved_villages()
+
+    assert "recover-me" in sessions.all_saves_userid()
+    assert json.loads(save.read_text(encoding="utf-8"))["playerInfo"]["name"] == "Intact"
+    assert json.loads(backup.read_text(encoding="utf-8"))["playerInfo"]["name"] == "Intact"
 
 
 def test_missing_villages_directory_stops_with_a_clear_message(
