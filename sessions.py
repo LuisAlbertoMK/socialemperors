@@ -169,9 +169,11 @@ def load_saved_villages():
         print(f"({map_name}) Ok.")
         __saves[str(USERID)] = save
         # Persist a recovered file immediately, so the next restart does not
-        # have to recover it again.
+        # have to recover it again. Skip the rolling backup on that write: the
+        # backup on disk is the copy this save was rebuilt from, and copying
+        # the corrupt main file over it would destroy the only good backup.
         if modified or recovered:
-            save_session(USERID)
+            save_session(USERID, backup=not recovered)
     
 
 # New village
@@ -363,11 +365,18 @@ def backup_session(USERID: str):
 
 
 @synchronized
-def save_session(USERID: str):
+def save_session(USERID: str, backup: bool = True):
+    """Write one player's save atomically, backing up the previous copy.
+
+    ``backup=False`` is for the boot recovery path: there the file on disk is
+    the corrupt one that was just replaced, so backing it up would overwrite the
+    good ``.bak`` the save was recovered from.
+    """
     file = f"{USERID}.save.json"
     log(f" * Saving village at {file}... ", end='')
     village = session(USERID)
-    backup_session(USERID)
+    if backup:
+        backup_session(USERID)
     final_path = os.path.join(SAVES_DIR, file)
     # Unique temp name per writer: a fixed "<save>.tmp" collides when two threads
     # (or two server processes) save at once, and Windows refuses to reopen a
