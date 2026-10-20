@@ -40,6 +40,25 @@ def test_asset_view_rejects_traversal_without_fetching(tmp_path, monkeypatch):
     assert fetched == []
 
 
+def test_asset_view_rejects_a_nul_byte_without_fetching(tmp_path, monkeypatch):
+    """A NUL byte is not a path character: it must never reach the write side.
+
+    ``os.path.exists`` swallows the null byte, so without an explicit check the
+    loader reaches ``open()``, which raises ValueError and turns the hardened
+    route into a 500.
+    """
+    monkeypatch.setattr(server, "BASE_DIR", str(tmp_path))
+    fetched = []
+    monkeypatch.setattr(
+        server, "_download_asset", lambda url, destination: fetched.append(destination) or True
+    )
+
+    with server.app.test_request_context("/"):
+        assert server.static_assets_loader("a\x00b") == ("", 404)
+
+    assert fetched == []
+
+
 class _FakeResponse:
     def __init__(self, payload: bytes):
         self._payload = payload

@@ -144,7 +144,13 @@ def _safe_join(base_dir: str, relative_path: str):
     loader writes whatever the CDN returns to that path, which turns a traversal
     into an arbitrary file write. Return ``None`` when the resolved path is not
     inside ``base_dir``; callers answer 404.
+
+    A NUL byte is rejected up front: it is not a path character, ``os.path``
+    tolerates it in some calls, and ``open()`` raises ``ValueError`` — a 500
+    from the very route this guard protects.
     """
+    if "\x00" in relative_path:
+        return None
     base = os.path.realpath(base_dir)
     candidate = os.path.realpath(os.path.join(base, relative_path))
     try:
